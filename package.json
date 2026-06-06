@@ -1,0 +1,16 @@
+{
+  "name": "pi-runner",
+  "version": "1.0.0",
+  "description": "Pi Runner — a one-thumb lane-dodge arcade game with Pi Network login and optional Pi payment unlock.",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
