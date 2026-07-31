@@ -1,3 +1,18 @@
 node_modules/
 *.log
 .DS_Store
+.env
+
+# Build outputs
+/public/
+/build/
+/emsdk/
+
+# Generated WASM (produced by scripts/build-wasm.sh)
+/web/src/core/pirun_core.js
+/web/src/core/pirun_core.wasm
+/server/pirun_core_node.js
+/server/pirun_core_node.wasm
+
+# Runtime data (persistent store)
+/server/data/
