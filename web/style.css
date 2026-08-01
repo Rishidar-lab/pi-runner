@@ -126,6 +126,12 @@ body {
 .ctrl-mid .ctrl { width: 64px; height: 44px; font-size: 16px; }
 @media (hover: hover) and (pointer: fine) { .controls { opacity: .35; } .controls:hover { opacity: .8; } }
 
+/* replay banner */
+.replay-hud { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 7; display: flex; align-items: center; gap: 8px; font-family: Orbitron; font-size: 12px; letter-spacing: 2px; color: var(--text); background: rgba(10,6,24,.85); border: 1px solid var(--stroke); padding: 7px 10px 7px 14px; border-radius: 999px; box-shadow: 0 6px 20px rgba(0,0,0,.4); }
+.replay-hud .rdot { width: 9px; height: 9px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 10px var(--danger); animation: rpulse 1s infinite; }
+@keyframes rpulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+.replay-hud .rskip { font-family: Orbitron; font-size: 11px; color: #0a0618; background: var(--cyan); border: none; border-radius: 999px; padding: 5px 12px; cursor: pointer; }
+
 /* footer */
 .foot { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px; font-size: 11px; color: var(--muted); }
 .foot .dot { opacity: .5; }

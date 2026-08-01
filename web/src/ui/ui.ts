@@ -23,6 +23,8 @@ export interface UIHandlers {
   onOpenMissions(): void;
   onBack(): void;
   onSelectSkin(index: number): void;
+  onWatchReplay(): void;
+  onShare(): void;
   onLogin(): void;
   onBuyUnlock(): void;
   onToggleSound(on: boolean): void;
@@ -40,6 +42,7 @@ export class UI {
     mult: HTMLElement; power: HTMLElement; login: HTMLElement; user: HTMLElement;
   };
   private toastTimer = 0;
+  private replayHud: HTMLElement | null = null;
   current: ScreenName = null;
 
   constructor(private root: HTMLElement, private handlers: UIHandlers) {
@@ -157,10 +160,26 @@ export class UI {
         <div><span>${res.distance}</span><small>METERS</small></div>
       </div>
       <button class="btn-primary" data-a="restart">PLAY AGAIN</button>
+      <div class="btn-row">
+        <button class="btn-ghost" data-a="replay">▶ Watch Replay</button>
+        <button class="btn-ghost" data-a="share">Share</button>
+      </div>
       ${unlockBtn}
       <button class="btn-ghost" data-a="quit">Menu</button>`);
     this.wire(p);
   }
+
+  /** Lightweight banner shown while a replay plays; tap/Skip returns to game-over. */
+  showReplayHud(onSkip: () => void): void {
+    this.hideReplayHud();
+    const el = document.createElement('div');
+    el.className = 'replay-hud';
+    el.innerHTML = `<span class="rdot"></span> REPLAY <button class="rskip" type="button">Skip</button>`;
+    el.querySelector('.rskip')!.addEventListener('click', (e) => { e.stopPropagation(); onSkip(); });
+    this.root.appendChild(el);
+    this.replayHud = el;
+  }
+  hideReplayHud(): void { this.replayHud?.remove(); this.replayHud = null; }
 
   showSettings(meta: MetaDoc, back: ScreenName): void {
     this.current = 'settings';
@@ -230,6 +249,7 @@ export class UI {
       play: h.onPlay, daily: h.onDaily, resume: h.onResume, restart: h.onRestart,
       quit: h.onQuitToMenu, settings: h.onOpenSettings, skins: h.onOpenSkins,
       missions: h.onOpenMissions, back: h.onBack, unlock: h.onBuyUnlock,
+      replay: h.onWatchReplay, share: h.onShare,
       'resume-back': h.onResume,
     };
     p.querySelectorAll('[data-a]').forEach((b) => {

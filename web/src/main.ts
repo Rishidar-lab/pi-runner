@@ -42,6 +42,13 @@ class Game {
   private curSkin = 0;
   private settingsBack: 'menu' | 'pause' = 'menu';
 
+  // last finished run — enables a deterministic replay (same seed + input tape)
+  private lastRun: { seed: number; unlockShield: boolean; skin: number; steps: number; tapeSteps: number[]; tapeCmds: number[] } | null = null;
+  private lastResult: { score: number; coins: number; distance: number; newBest: boolean } | null = null;
+  private replaying = false;
+  private replayStep = 0;
+  private replayIdx = 0;
+
   // event-detection snapshots (for SFX + particles)
   private prev = { coins: 0, shield: false, magnet: 0, boost: 0, slowmo: 0, gems: 0, state: 0 };
 
@@ -80,6 +87,8 @@ class Game {
 
   // ------------------------------ input ----------------------------------
   private onInput(e: InputEvent): void {
+    // Any input during a replay skips it and returns to the game-over screen.
+    if (this.replaying) { this.stopReplay(); return; }
     const playing = this.core.state() === St.Playing;
     if (e === 'pause') {
       if (playing) this.doPause();
@@ -146,6 +155,10 @@ class Game {
     const newBest = this.store.recordRun({ score: result.score, coins: result.coins, distance: result.distance });
     this.ui.setBest(this.store.best);
 
+    // snapshot the run so it can be replayed deterministically from game-over
+    this.lastRun = { seed: this.curSeed, unlockShield: this.curUnlockShield, skin: this.curSkin, steps: this.stepIdx, tapeSteps: this.tapeSteps.slice(), tapeCmds: this.tapeCmds.slice() };
+    this.lastResult = { score: result.score, coins: result.coins, distance: result.distance, newBest };
+
     // achievements
     const totals = { coins: this.store.totalCoins, distance: this.store.view.totalDistance, best: this.store.best, runs: this.store.view.runsPlayed };
     const { mask, newly } = evalAchievements(this.store.achievementsMask, result, totals);
@@ -199,12 +212,57 @@ class Game {
     } catch { /* offline: local best already saved */ }
   }
 
+  // ------------------------------ replay ---------------------------------
+  /** Re-run the last failed attempt deterministically from its seed + tape. */
+  private startReplay(): void {
+    if (!this.lastRun) return;
+    const r = this.lastRun;
+    this.audio.resume();
+    this.core.reset(r.seed, r.unlockShield, r.skin);
+    this.core.start();
+    this.renderer.setSkin(r.skin);
+    this.acc = 0; this.replayStep = 0; this.replayIdx = 0; this.replaying = true;
+    this.prev = { coins: 0, shield: r.unlockShield, magnet: 0, boost: 0, slowmo: 0, gems: 0, state: St.Playing };
+    this.ui.hideAll();
+    this.toggleControls(false);
+    this.ui.showReplayHud(() => this.stopReplay());
+  }
+
+  private stepReplay(dt: number): void {
+    const r = this.lastRun!;
+    this.acc += dt;
+    while (this.acc >= FIXED_DT && this.core.state() === St.Playing && this.replayStep < r.steps) {
+      while (this.replayIdx < r.tapeSteps.length && r.tapeSteps[this.replayIdx] === this.replayStep) {
+        this.core.input(r.tapeCmds[this.replayIdx]); this.replayIdx++;
+      }
+      this.core.advance(FIXED_DT);
+      this.replayStep++;
+      this.acc -= FIXED_DT;
+      this.detectEvents();
+    }
+    this.ui.updateHUD(this.core);
+    if (this.core.state() !== St.Playing || this.replayStep >= r.steps) this.stopReplay();
+  }
+
+  private stopReplay(): void {
+    if (!this.replaying) return;
+    this.replaying = false;
+    this.ui.hideReplayHud();
+    if (this.core.state() === St.Playing) this.core.pause(); // halt the loop if skipped early
+    const res = this.lastResult
+      ? { ...this.lastResult, best: this.store.best }
+      : { score: this.core.score(), best: this.store.best, coins: this.core.coins(), distance: this.core.distance(), newBest: false };
+    this.ui.showGameOver(res, !this.store.goldUnlock);
+  }
+
   // ------------------------------ loop -----------------------------------
   private loop(now: number): void {
     let dt = (now - this.last) / 1000; this.last = now;
     if (dt > 0.25) dt = 0.25;
 
-    if (this.core.state() === St.Playing) {
+    if (this.replaying) {
+      this.stepReplay(dt);
+    } else if (this.core.state() === St.Playing) {
       this.acc += dt;
       while (this.acc >= FIXED_DT && this.core.state() === St.Playing) {
         // apply this step's inputs, recording them for the verification tape
@@ -219,7 +277,10 @@ class Game {
         this.detectEvents();
       }
       this.ui.updateHUD(this.core);
-      if (this.core.state() === St.GameOver && this.prev.state !== St.GameOver) { this.prev.state = St.GameOver; this.endRun(); }
+      // The run just ended: show the game-over + replay screen. The outer
+      // `state === Playing` guard ensures this fires exactly once (detectEvents
+      // must NOT be used to gate this — it runs mid-loop and would mask it).
+      if (this.core.state() === St.GameOver) this.endRun();
     }
 
     this.renderer.frame(this.core, dt, this.core.speed());
@@ -261,12 +322,26 @@ class Game {
         this.store.selectSkin(i); this.renderer.setSkin(i); this.audio.ui();
         this.ui.showSkins(this.store.view.skinsUnlocked, this.store.selectedSkin, this.store.goldUnlock);
       },
+      onWatchReplay: () => this.startReplay(),
+      onShare: () => void this.share(),
       onLogin: () => void this.login(),
       onBuyUnlock: () => void this.buyUnlock(),
       onToggleSound: (on: boolean) => { this.audio.setSound(on); this.store.meta.settings.sound = on; this.store.flushMeta(); },
       onToggleMusic: (on: boolean) => { this.audio.setMusic(on); this.store.meta.settings.music = on; this.store.flushMeta(); },
       onToggleReducedMotion: (on: boolean) => { this.renderer.reducedMotion = on; this.store.meta.settings.reducedMotion = on; this.store.flushMeta(); },
     };
+  }
+
+  /** Share the game (native share sheet, falling back to copying the link). */
+  private async share(): Promise<void> {
+    const url = location.href.split('#')[0];
+    const score = this.lastResult?.score ?? this.store.best;
+    const text = `I scored ${score} in Pi Runner — think you can beat me? 🏃‍♂️π`;
+    try {
+      if (navigator.share) { await navigator.share({ title: 'Pi Runner', text, url }); return; }
+    } catch { /* user cancelled share sheet */ }
+    try { await navigator.clipboard.writeText(url); this.ui.toast('Link copied — share it!'); }
+    catch { this.ui.toast(url); }
   }
 
   private async login(): Promise<void> {
