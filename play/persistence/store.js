@@ -66,6 +66,15 @@ export class Store {
         this.flushProfile();
         return newBest;
     }
+    addLifetime(run) {
+        const newBest = run.score > this.view.bestScore;
+        this.view.bestScore = Math.max(this.view.bestScore, run.score);
+        this.view.totalCoins += Math.max(0, run.addCoins);
+        this.view.totalDistance += Math.max(0, run.addDistance);
+        if (run.countRun) this.view.runsPlayed += 1;
+        this.flushProfile();
+        return newBest;
+    }
     unlockSkin(index) {
         this.view.skinsUnlocked |= 1 << index;
         this.flushProfile();

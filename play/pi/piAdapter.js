@@ -129,6 +129,45 @@ export class PiAdapter {
             });
         });
     }
+    async showRewardedAd() {
+        if (!this.available || !window.Pi?.Ads) return notInPi();
+        if (!FLAGS.PI_ADS_ENABLED) return disabled();
+        try {
+            const ads = window.Pi.Ads;
+            const ready = await ads.isAdReady('rewarded');
+            if (!ready.ready) {
+                const req = await ads.requestAd('rewarded');
+                if (req.result !== 'AD_LOADED') return {
+                    ok: false,
+                    reason: 'error',
+                    message: 'No ad available right now.'
+                };
+            }
+            const shown = await ads.showAd('rewarded');
+            if (shown.result === 'AD_REWARDED' && shown.adId) return {
+                ok: true,
+                value: {
+                    adId: shown.adId
+                }
+            };
+            if (shown.result === 'AD_CLOSED') return {
+                ok: false,
+                reason: 'cancelled',
+                message: 'Ad closed early — no reward.'
+            };
+            return {
+                ok: false,
+                reason: 'error',
+                message: 'Ad could not be shown.'
+            };
+        } catch (e) {
+            return {
+                ok: false,
+                reason: 'error',
+                message: e.message || 'Ad error'
+            };
+        }
+    }
     recoverIncomplete(p) {
         const paymentId = p?.identifier;
         if (!paymentId) return;
