@@ -29,6 +29,11 @@ class Game {
     curUnlockShield = false;
     curSkin = 0;
     settingsBack = 'menu';
+    lastRun = null;
+    lastResult = null;
+    replaying = false;
+    replayStep = 0;
+    replayIdx = 0;
     prev = {
         coins: 0,
         shield: false,
@@ -64,6 +69,10 @@ class Game {
         if (!this.pi.available) this.ui.setLoginState(null, false);
     }
     onInput(e) {
+        if (this.replaying) {
+            this.stopReplay();
+            return;
+        }
         const playing = this.core.state() === St.Playing;
         if (e === 'pause') {
             if (playing) this.doPause();
@@ -163,6 +172,20 @@ class Game {
             distance: result.distance
         });
         this.ui.setBest(this.store.best);
+        this.lastRun = {
+            seed: this.curSeed,
+            unlockShield: this.curUnlockShield,
+            skin: this.curSkin,
+            steps: this.stepIdx,
+            tapeSteps: this.tapeSteps.slice(),
+            tapeCmds: this.tapeCmds.slice()
+        };
+        this.lastResult = {
+            score: result.score,
+            coins: result.coins,
+            distance: result.distance,
+            newBest
+        };
         const totals = {
             coins: this.store.totalCoins,
             distance: this.store.view.totalDistance,
@@ -224,11 +247,70 @@ class Game {
             });
         } catch  {}
     }
+    startReplay() {
+        if (!this.lastRun) return;
+        const r = this.lastRun;
+        this.audio.resume();
+        this.core.reset(r.seed, r.unlockShield, r.skin);
+        this.core.start();
+        this.renderer.setSkin(r.skin);
+        this.acc = 0;
+        this.replayStep = 0;
+        this.replayIdx = 0;
+        this.replaying = true;
+        this.prev = {
+            coins: 0,
+            shield: r.unlockShield,
+            magnet: 0,
+            boost: 0,
+            slowmo: 0,
+            gems: 0,
+            state: St.Playing
+        };
+        this.ui.hideAll();
+        this.toggleControls(false);
+        this.ui.showReplayHud(()=>this.stopReplay());
+    }
+    stepReplay(dt) {
+        const r = this.lastRun;
+        this.acc += dt;
+        while(this.acc >= FIXED_DT && this.core.state() === St.Playing && this.replayStep < r.steps){
+            while(this.replayIdx < r.tapeSteps.length && r.tapeSteps[this.replayIdx] === this.replayStep){
+                this.core.input(r.tapeCmds[this.replayIdx]);
+                this.replayIdx++;
+            }
+            this.core.advance(FIXED_DT);
+            this.replayStep++;
+            this.acc -= FIXED_DT;
+            this.detectEvents();
+        }
+        this.ui.updateHUD(this.core);
+        if (this.core.state() !== St.Playing || this.replayStep >= r.steps) this.stopReplay();
+    }
+    stopReplay() {
+        if (!this.replaying) return;
+        this.replaying = false;
+        this.ui.hideReplayHud();
+        if (this.core.state() === St.Playing) this.core.pause();
+        const res = this.lastResult ? {
+            ...this.lastResult,
+            best: this.store.best
+        } : {
+            score: this.core.score(),
+            best: this.store.best,
+            coins: this.core.coins(),
+            distance: this.core.distance(),
+            newBest: false
+        };
+        this.ui.showGameOver(res, !this.store.goldUnlock);
+    }
     loop(now) {
         let dt = (now - this.last) / 1000;
         this.last = now;
         if (dt > 0.25) dt = 0.25;
-        if (this.core.state() === St.Playing) {
+        if (this.replaying) {
+            this.stepReplay(dt);
+        } else if (this.core.state() === St.Playing) {
             this.acc += dt;
             while(this.acc >= FIXED_DT && this.core.state() === St.Playing){
                 for (const c of this.pendingInputs){
@@ -245,10 +327,7 @@ class Game {
                 this.detectEvents();
             }
             this.ui.updateHUD(this.core);
-            if (this.core.state() === St.GameOver && this.prev.state !== St.GameOver) {
-                this.prev.state = St.GameOver;
-                this.endRun();
-            }
+            if (this.core.state() === St.GameOver) this.endRun();
         }
         this.renderer.frame(this.core, dt, this.core.speed());
         requestAnimationFrame((t)=>this.loop(t));
@@ -317,6 +396,8 @@ class Game {
                 this.audio.ui();
                 this.ui.showSkins(this.store.view.skinsUnlocked, this.store.selectedSkin, this.store.goldUnlock);
             },
+            onWatchReplay: ()=>this.startReplay(),
+            onShare: ()=>void this.share(),
             onLogin: ()=>void this.login(),
             onBuyUnlock: ()=>void this.buyUnlock(),
             onToggleSound: (on)=>{
@@ -335,6 +416,27 @@ class Game {
                 this.store.flushMeta();
             }
         };
+    }
+    async share() {
+        const url = location.href.split('#')[0];
+        const score = this.lastResult?.score ?? this.store.best;
+        const text = `I scored ${score} in Pi Runner — think you can beat me? 🏃‍♂️π`;
+        try {
+            if (navigator.share) {
+                await navigator.share({
+                    title: 'Pi Runner',
+                    text,
+                    url
+                });
+                return;
+            }
+        } catch  {}
+        try {
+            await navigator.clipboard.writeText(url);
+            this.ui.toast('Link copied — share it!');
+        } catch  {
+            this.ui.toast(url);
+        }
     }
     async login() {
         const r = await this.pi.login();

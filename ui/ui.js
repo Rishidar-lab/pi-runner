@@ -9,6 +9,7 @@ export class UI {
     toastEl;
     hud;
     toastTimer = 0;
+    replayHud = null;
     current = null;
     constructor(root, handlers){
         this.root = root;
@@ -125,9 +126,29 @@ export class UI {
         <div><span>${res.distance}</span><small>METERS</small></div>
       </div>
       <button class="btn-primary" data-a="restart">PLAY AGAIN</button>
+      <div class="btn-row">
+        <button class="btn-ghost" data-a="replay">▶ Watch Replay</button>
+        <button class="btn-ghost" data-a="share">Share</button>
+      </div>
       ${unlockBtn}
       <button class="btn-ghost" data-a="quit">Menu</button>`);
         this.wire(p);
+    }
+    showReplayHud(onSkip) {
+        this.hideReplayHud();
+        const el = document.createElement('div');
+        el.className = 'replay-hud';
+        el.innerHTML = `<span class="rdot"></span> REPLAY <button class="rskip" type="button">Skip</button>`;
+        el.querySelector('.rskip').addEventListener('click', (e)=>{
+            e.stopPropagation();
+            onSkip();
+        });
+        this.root.appendChild(el);
+        this.replayHud = el;
+    }
+    hideReplayHud() {
+        this.replayHud?.remove();
+        this.replayHud = null;
     }
     showSettings(meta, back) {
         this.current = 'settings';
@@ -202,6 +223,8 @@ export class UI {
             missions: h.onOpenMissions,
             back: h.onBack,
             unlock: h.onBuyUnlock,
+            replay: h.onWatchReplay,
+            share: h.onShare,
             'resume-back': h.onResume
         };
         p.querySelectorAll('[data-a]').forEach((b)=>{
