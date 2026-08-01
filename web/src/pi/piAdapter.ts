@@ -24,6 +24,14 @@ interface PiSDK {
     data: { amount: number; memo: string; metadata: Record<string, unknown> },
     callbacks: PiPaymentCallbacks,
   ): void;
+  Ads?: PiAds;
+  nativeFeaturesList?(): Promise<string[]>;
+}
+// Pi Ad Network (rewarded ads). Rewards must be verified server-side by adId.
+interface PiAds {
+  isAdReady(type: 'interstitial' | 'rewarded'): Promise<{ type: string; ready: boolean }>;
+  requestAd(type: 'interstitial' | 'rewarded'): Promise<{ type: string; result: string }>;
+  showAd(type: 'interstitial' | 'rewarded'): Promise<{ type: string; result: string; adId?: string }>;
 }
 interface PiPayment { identifier?: string; transaction?: { txid?: string }; }
 interface PiPaymentCallbacks {
@@ -125,6 +133,30 @@ export class PiAdapter {
         },
       );
     });
+  }
+
+  /**
+   * Show a rewarded ad and, if the user earned it, return the adId for the
+   * server to verify against the Pi Ad Network. Never grant a reward from this
+   * result alone — always confirm server-side via /api/ads/verify.
+   */
+  async showRewardedAd(): Promise<PiResult<{ adId: string }>> {
+    if (!this.available || !window.Pi?.Ads) return notInPi();
+    if (!FLAGS.PI_ADS_ENABLED) return disabled();
+    try {
+      const ads = window.Pi.Ads;
+      const ready = await ads.isAdReady('rewarded');
+      if (!ready.ready) {
+        const req = await ads.requestAd('rewarded');
+        if (req.result !== 'AD_LOADED') return { ok: false, reason: 'error', message: 'No ad available right now.' };
+      }
+      const shown = await ads.showAd('rewarded');
+      if (shown.result === 'AD_REWARDED' && shown.adId) return { ok: true, value: { adId: shown.adId } };
+      if (shown.result === 'AD_CLOSED') return { ok: false, reason: 'cancelled', message: 'Ad closed early — no reward.' };
+      return { ok: false, reason: 'error', message: 'Ad could not be shown.' };
+    } catch (e) {
+      return { ok: false, reason: 'error', message: (e as Error).message || 'Ad error' };
+    }
   }
 
   /** SDK callback: finish a payment that was interrupted on a prior visit. */

@@ -177,6 +177,28 @@ static void test_collisions() {
     CHECK(s.state() == (int)GameState::GameOver, "second hit ends the run"); }
 }
 
+static void test_revive() {
+  std::printf("Revive after failing (rewarded-ad hook)\n");
+  Simulation s; s.reset(9, false, 0); s.start();
+  SimTestAccess::disableSpawns(s); SimTestAccess::clearEnts(s);
+  SimTestAccess::setLane(s, 1);
+  SimTestAccess::addObstacle(s, Obstacle::Barrier, 1, 0.5f);
+  stepN(s, 200);
+  CHECK(s.state() == (int)GameState::GameOver, "died into a barrier");
+  const uint64_t scoreAtDeath = s.score();
+  s.revive();
+  CHECK(s.state() == (int)GameState::Playing, "revive() resumes play");
+  CHECK(s.hasShield(), "revive grants a shield");
+  CHECK(s.score() == scoreAtDeath, "revive preserves score");
+  // the barrier that killed us (and any near obstacle) is cleared, so we survive a bit
+  SimTestAccess::disableSpawns(s);
+  stepN(s, 60);
+  CHECK(s.state() == (int)GameState::Playing, "revive clears the danger zone");
+  // revive only works from GameOver
+  s.revive();
+  CHECK(s.state() == (int)GameState::Playing, "revive is a no-op while already playing");
+}
+
 static void test_scoring() {
   std::printf("Scoring (coins / gems / combo / multiplier / boost)\n");
 
@@ -311,6 +333,7 @@ int main() {
   test_profile_roundtrip();
   test_state_transitions();
   test_collisions();
+  test_revive();
   test_scoring();
   test_powerups();
   test_full_run_determinism();

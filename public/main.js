@@ -34,6 +34,10 @@ class Game {
     replaying = false;
     replayStep = 0;
     replayIdx = 0;
+    revivedThisRun = false;
+    recordedCoins = 0;
+    recordedDistance = 0;
+    runCounted = false;
     prev = {
         coins: 0,
         shield: false,
@@ -128,6 +132,10 @@ class Game {
         this.pendingInputs = [];
         this.tapeSteps = [];
         this.tapeCmds = [];
+        this.revivedThisRun = false;
+        this.recordedCoins = 0;
+        this.recordedDistance = 0;
+        this.runCounted = false;
         this.prev = {
             coins: 0,
             shield: this.curUnlockShield,
@@ -166,11 +174,17 @@ class Game {
             multiplier: this.core.multiplier(),
             powerups: this.core.powerups()
         };
-        const newBest = this.store.recordRun({
+        const addCoins = result.coins - this.recordedCoins;
+        const addDistance = result.distance - this.recordedDistance;
+        const newBest = this.store.addLifetime({
             score: result.score,
-            coins: result.coins,
-            distance: result.distance
+            addCoins,
+            addDistance,
+            countRun: !this.runCounted
         });
+        this.recordedCoins = result.coins;
+        this.recordedDistance = result.distance;
+        this.runCounted = true;
         this.ui.setBest(this.store.best);
         this.lastRun = {
             seed: this.curSeed,
@@ -205,7 +219,11 @@ class Game {
             coins: result.coins,
             distance: result.distance,
             newBest
-        }, !this.store.goldUnlock);
+        }, {
+            unlockAvailable: !this.store.goldUnlock,
+            canRevive: this.pi.available && !this.revivedThisRun,
+            canClaim: Boolean(this.pi.user)
+        });
         for (const a of newly)this.ui.toast(`Achievement: ${a.name} ★`);
         for (const m of doneMissions)this.ui.toast(`Mission complete: ${m} ✓`);
     }
@@ -302,7 +320,11 @@ class Game {
             distance: this.core.distance(),
             newBest: false
         };
-        this.ui.showGameOver(res, !this.store.goldUnlock);
+        this.ui.showGameOver(res, {
+            unlockAvailable: !this.store.goldUnlock,
+            canRevive: this.pi.available && !this.revivedThisRun,
+            canClaim: Boolean(this.pi.user)
+        });
     }
     loop(now) {
         let dt = (now - this.last) / 1000;
@@ -398,6 +420,8 @@ class Game {
             },
             onWatchReplay: ()=>this.startReplay(),
             onShare: ()=>void this.share(),
+            onWatchAdRevive: ()=>void this.reviveViaAd(),
+            onClaimReward: ()=>void this.claimReward(),
             onLogin: ()=>void this.login(),
             onBuyUnlock: ()=>void this.buyUnlock(),
             onToggleSound: (on)=>{
@@ -416,6 +440,99 @@ class Game {
                 this.store.flushMeta();
             }
         };
+    }
+    async reviveViaAd() {
+        const ad = await this.pi.showRewardedAd();
+        if (!ad.ok) {
+            this.ui.toast(ad.message);
+            return;
+        }
+        let granted = false;
+        try {
+            const r = await fetch('/api/ads/verify', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    uid: this.pi.user?.uid,
+                    adId: ad.value.adId,
+                    kind: 'revive'
+                })
+            }).then((x)=>x.json());
+            granted = Boolean(r?.ok);
+        } catch  {
+            granted = false;
+        }
+        if (!granted) {
+            this.ui.toast('Ad reward could not be verified.');
+            return;
+        }
+        this.revivedThisRun = true;
+        this.core.revive();
+        this.ui.hideAll();
+        this.toggleControls(true);
+        if (this.store.meta.settings.music) this.audio.startMusic();
+        this.prev = {
+            coins: this.core.coins(),
+            shield: this.core.hasShield(),
+            magnet: 0,
+            boost: 0,
+            slowmo: 0,
+            gems: this.core.gems(),
+            state: St.Playing
+        };
+        this.acc = 0;
+        this.last = performance.now();
+        this.ui.toast('Revived! Shield active 🛡');
+    }
+    async claimReward() {
+        if (!this.pi.user) {
+            this.ui.toast('Sign in with Pi to claim rewards.');
+            return;
+        }
+        if (!this.lastRun || !this.lastResult) return;
+        const r = this.lastRun;
+        try {
+            const res = await fetch('/api/rewards/claim', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    uid: this.pi.user.uid,
+                    seed: r.seed,
+                    unlockShield: r.unlockShield,
+                    skin: r.skin,
+                    steps: r.steps,
+                    tapeSteps: r.tapeSteps,
+                    tapeCmds: r.tapeCmds,
+                    score: this.lastResult.score,
+                    coins: this.lastResult.coins,
+                    distance: this.lastResult.distance
+                })
+            }).then((x)=>x.json());
+            if (res?.ok) this.ui.toast(res.paid ? `Earned ${res.amountPi} π! ✦` : `Reward recorded: ${res.amountPi} π`);
+            else this.ui.toast(this.rewardReason(res?.reason));
+        } catch  {
+            this.ui.toast('Could not reach the rewards server.');
+        }
+    }
+    rewardReason(reason) {
+        switch(reason){
+            case 'below_minimum':
+                return 'Not enough π yet — play a bit more to reach the minimum.';
+            case 'daily_cap_reached':
+                return "You've hit today's reward cap. Come back tomorrow!";
+            case 'already_claimed':
+                return 'This run was already claimed.';
+            case 'unverified_run':
+                return 'Run could not be verified.';
+            case 'rewards_disabled':
+                return 'Rewards are not live yet.';
+            default:
+                return 'Reward could not be processed.';
+        }
     }
     async share() {
         const url = location.href.split('#')[0];

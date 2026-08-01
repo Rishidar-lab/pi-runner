@@ -25,6 +25,8 @@ export interface UIHandlers {
   onSelectSkin(index: number): void;
   onWatchReplay(): void;
   onShare(): void;
+  onWatchAdRevive(): void;
+  onClaimReward(): void;
   onLogin(): void;
   onBuyUnlock(): void;
   onToggleSound(on: boolean): void;
@@ -145,11 +147,19 @@ export class UI {
     this.wire(p);
   }
 
-  showGameOver(res: { score: number; best: number; coins: number; distance: number; newBest: boolean }, unlockAvailable: boolean): void {
+  showGameOver(
+    res: { score: number; best: number; coins: number; distance: number; newBest: boolean },
+    opts: { unlockAvailable?: boolean; canRevive?: boolean; canClaim?: boolean } = {},
+  ): void {
     this.current = 'gameover';
-    const unlockBtn = FLAGS.PI_PAYMENTS_ENABLED && unlockAvailable
+    const unlockBtn = FLAGS.PI_PAYMENTS_ENABLED && opts.unlockAvailable
       ? `<button class="btn-ghost" data-a="unlock">Unlock Gold Orb + Shield · <b>${GOLD_UNLOCK.price}</b></button>`
       : '';
+    // Play-to-earn hooks (only shown when the corresponding Pi feature is live).
+    const reviveBtn = FLAGS.PI_ADS_ENABLED && opts.canRevive
+      ? `<button class="btn-revive" data-a="revive">▶ Watch ad to REVIVE</button>` : '';
+    const claimBtn = FLAGS.REWARDS_ENABLED && opts.canClaim
+      ? `<button class="btn-earn" data-a="claim">Claim <b>π</b> reward</button>` : '';
     const p = this.panel(`
       <div class="panel-eyebrow">${res.newBest ? 'NEW BEST!' : 'RUN OVER'}</div>
       <h1 class="panel-title">${res.newBest ? 'RECORD' : 'NICE RUN'}</h1>
@@ -159,7 +169,9 @@ export class UI {
         <div><span>${res.coins}</span><small>π</small></div>
         <div><span>${res.distance}</span><small>METERS</small></div>
       </div>
+      ${reviveBtn}
       <button class="btn-primary" data-a="restart">PLAY AGAIN</button>
+      ${claimBtn}
       <div class="btn-row">
         <button class="btn-ghost" data-a="replay">▶ Watch Replay</button>
         <button class="btn-ghost" data-a="share">Share</button>
@@ -250,6 +262,7 @@ export class UI {
       quit: h.onQuitToMenu, settings: h.onOpenSettings, skins: h.onOpenSkins,
       missions: h.onOpenMissions, back: h.onBack, unlock: h.onBuyUnlock,
       replay: h.onWatchReplay, share: h.onShare,
+      revive: h.onWatchAdRevive, claim: h.onClaimReward,
       'resume-back': h.onResume,
     };
     p.querySelectorAll('[data-a]').forEach((b) => {

@@ -127,6 +127,18 @@ void Simulation::start()  { if (state_ == GameState::Menu || state_ == GameState
 void Simulation::pause()  { if (state_ == GameState::Playing) state_ = GameState::Paused; }
 void Simulation::resume() { if (state_ == GameState::Paused)  state_ = GameState::Playing; }
 
+void Simulation::revive() {
+  if (state_ != GameState::GameOver) return;
+  state_ = GameState::Playing;
+  shield_ = true;                 // one free hit after reviving
+  // Clear obstacles anywhere near the player so the revive is survivable; leave
+  // pickups. "Near" = the danger zone from just behind the player to well ahead.
+  ents_.erase(std::remove_if(ents_.begin(), ents_.end(),
+              [](const Ent& e){ return e.kind == 0 && e.dist < 35.0f; }), ents_.end());
+  combo_ = 0; recomputeMultiplier();
+  acc_ = 0.0f;
+}
+
 void Simulation::queueInput(InputCmd cmd) {
   if (cmd != InputCmd::None) inbox_.push_back(cmd);
 }

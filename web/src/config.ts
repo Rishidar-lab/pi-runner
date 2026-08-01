@@ -18,6 +18,32 @@ export const FLAGS = {
   PI_SANDBOX: true,
   /** Submit runs to the backend leaderboard (server re-simulates to validate). */
   LEADERBOARD_ENABLED: true,
+  /** Pi Ad Network rewarded ads ("watch ad to revive / double coins").
+   *  Requires Pi Core Team monetization approval. Rewards are granted only after
+   *  server-side adId verification. Keep FALSE until approved + tested. */
+  PI_ADS_ENABLED: false,
+  /** Play-to-earn: real π rewards paid to users via App-to-User (A2U) payments.
+   *  Requires Pi approval + a funded app wallet on the server. Every claim is
+   *  gated by server re-simulation (anti-cheat) + a daily cap. Keep FALSE until
+   *  the wallet + approval are in place. */
+  REWARDS_ENABLED: false,
+} as const;
+
+/**
+ * Play-to-earn economics (tunable). These are the *maximums* the server will
+ * ever honor; the backend re-simulates each run and enforces the daily cap, so
+ * a manipulated client can never mint more than this.
+ */
+export const REWARDS = {
+  /** Real Pi earned per point of the server-verified run score (cheat-proof:
+   *  the backend re-simulates the run, so only legitimately-earned score pays). */
+  piPerToken: 0.001,
+  /** Hard per-user daily payout cap (real Pi). */
+  dailyCapPi: 0.25,
+  /** Minimum balance before a user can claim (reduces dust payouts). */
+  minClaimPi: 0.05,
+  /** Rewarded-ad perks (soft, in-game only — never real Pi). */
+  ad: { reviveShield: true, doubleCoins: true },
 } as const;
 
 /** The single optional cosmetic sold for Pi. Cosmetic + a starting shield only. */

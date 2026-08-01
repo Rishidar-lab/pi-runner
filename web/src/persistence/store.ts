@@ -82,6 +82,17 @@ export class Store {
     return newBest;
   }
 
+  /** Add to lifetime totals by delta (revive-safe). Returns true if new best. */
+  addLifetime(run: { score: number; addCoins: number; addDistance: number; countRun: boolean }): boolean {
+    const newBest = run.score > this.view.bestScore;
+    this.view.bestScore = Math.max(this.view.bestScore, run.score);
+    this.view.totalCoins += Math.max(0, run.addCoins);
+    this.view.totalDistance += Math.max(0, run.addDistance);
+    if (run.countRun) this.view.runsPlayed += 1;
+    this.flushProfile();
+    return newBest;
+  }
+
   unlockSkin(index: number): void { this.view.skinsUnlocked |= (1 << index); this.flushProfile(); }
   isSkinUnlocked(index: number): boolean { return (this.view.skinsUnlocked & (1 << index)) !== 0; }
   selectSkin(index: number): void { this.view.selectedSkin = index; this.flushProfile(); }

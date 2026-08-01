@@ -142,6 +142,10 @@ public:
   void start();          // Menu/GameOver -> Playing
   void pause();          // Playing -> Paused
   void resume();         // Paused -> Playing
+  // Revive a failed run in place (e.g. after a rewarded ad): GameOver -> Playing,
+  // grants a shield, and clears obstacles in the danger zone so the player gets a
+  // fair restart from where they died. Score/coins/distance are preserved.
+  void revive();
   void queueInput(InputCmd cmd); // buffered, applied at next fixed step
 
   // Advance the simulation by `dt` real seconds using an internal fixed-step

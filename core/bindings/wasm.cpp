@@ -24,6 +24,7 @@ public:
   void start()  { sim_.start(); }
   void pause()  { sim_.pause(); }
   void resume() { sim_.resume(); }
+  void revive() { sim_.revive(); }
   void input(int cmd) { sim_.queueInput(static_cast<InputCmd>(cmd)); }
   void advance(double dt) { sim_.advance(static_cast<float>(dt)); }
 
@@ -131,6 +132,7 @@ EMSCRIPTEN_BINDINGS(pirun_module) {
       .function("start", &Runner::start)
       .function("pause", &Runner::pause)
       .function("resume", &Runner::resume)
+      .function("revive", &Runner::revive)
       .function("input", &Runner::input)
       .function("advance", &Runner::advance)
       .function("state", &Runner::state)

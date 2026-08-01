@@ -17,6 +17,7 @@ const path = require('path');
 const store = require('./store');
 const pi = require('./pi');
 const leaderboard = require('./leaderboard');
+const rewards = require('./rewards');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -113,6 +114,31 @@ app.get('/api/leaderboard', (req, res) => {
   const n = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
   const daily = req.query.daily === '1';
   res.json({ ok: true, scores: store.topScores(n, daily, currentDay()) });
+});
+
+// ---- play-to-earn ---------------------------------------------------------
+// Verify a rewarded ad and grant its in-game perk (server-checked adId).
+app.post('/api/ads/verify', async (req, res) => {
+  if (!requireApiKey(res)) return;
+  try {
+    const result = await rewards.grantAdReward(req.body || {});
+    return res.status(result.ok ? 200 : 400).json(result);
+  } catch (e) { console.error('/api/ads/verify', e); return res.status(500).json({ ok: false, error: 'ad verify error' }); }
+});
+
+// Claim real-π rewards for a finished run (re-simulated + capped + idempotent).
+app.post('/api/rewards/claim', async (req, res) => {
+  if (!requireApiKey(res)) return;
+  try {
+    const result = await rewards.claim(req.body || {});
+    return res.status(result.ok ? 200 : 400).json(result);
+  } catch (e) { console.error('/api/rewards/claim', e); return res.status(500).json({ ok: false, error: 'reward claim error' }); }
+});
+
+app.get('/api/rewards/status', (req, res) => {
+  const uid = typeof req.query.uid === 'string' ? req.query.uid : null;
+  if (!uid) return res.json(rewards.status('')); // config-only view
+  res.json(rewards.status(uid));
 });
 
 function sanitizeName(s) { return typeof s === 'string' ? s.replace(/[^\w@.\- ]/g, '').slice(0, 24) : ''; }

@@ -49,6 +49,12 @@ class Game {
   private replayStep = 0;
   private replayIdx = 0;
 
+  // play-to-earn / revive bookkeeping (per run session)
+  private revivedThisRun = false;
+  private recordedCoins = 0;
+  private recordedDistance = 0;
+  private runCounted = false;
+
   // event-detection snapshots (for SFX + particles)
   private prev = { coins: 0, shield: false, magnet: 0, boost: 0, slowmo: 0, gems: 0, state: 0 };
 
@@ -131,6 +137,7 @@ class Game {
     this.renderer.setSkin(this.curSkin);
     this.acc = 0; this.stepIdx = 0; this.pendingInputs = [];
     this.tapeSteps = []; this.tapeCmds = [];
+    this.revivedThisRun = false; this.recordedCoins = 0; this.recordedDistance = 0; this.runCounted = false;
     this.prev = { coins: 0, shield: this.curUnlockShield, magnet: 0, boost: 0, slowmo: 0, gems: 0, state: St.Playing };
     this.toggleControls(true);
     this.ui.hideAll();
@@ -152,7 +159,12 @@ class Game {
       multiplier: this.core.multiplier(), powerups: this.core.powerups(),
     };
 
-    const newBest = this.store.recordRun({ score: result.score, coins: result.coins, distance: result.distance });
+    // Record lifetime totals by DELTA so a revived+continued run isn't double
+    // counted (endRun can fire more than once per session when reviving).
+    const addCoins = result.coins - this.recordedCoins;
+    const addDistance = result.distance - this.recordedDistance;
+    const newBest = this.store.addLifetime({ score: result.score, addCoins, addDistance, countRun: !this.runCounted });
+    this.recordedCoins = result.coins; this.recordedDistance = result.distance; this.runCounted = true;
     this.ui.setBest(this.store.best);
 
     // snapshot the run so it can be replayed deterministically from game-over
@@ -178,7 +190,11 @@ class Game {
 
     this.ui.showGameOver(
       { score: result.score, best: this.store.best, coins: result.coins, distance: result.distance, newBest },
-      !this.store.goldUnlock,
+      {
+        unlockAvailable: !this.store.goldUnlock,
+        canRevive: this.pi.available && !this.revivedThisRun,
+        canClaim: Boolean(this.pi.user),
+      },
     );
 
     for (const a of newly) this.ui.toast(`Achievement: ${a.name} ★`);
@@ -252,7 +268,11 @@ class Game {
     const res = this.lastResult
       ? { ...this.lastResult, best: this.store.best }
       : { score: this.core.score(), best: this.store.best, coins: this.core.coins(), distance: this.core.distance(), newBest: false };
-    this.ui.showGameOver(res, !this.store.goldUnlock);
+    this.ui.showGameOver(res, {
+      unlockAvailable: !this.store.goldUnlock,
+      canRevive: this.pi.available && !this.revivedThisRun,
+      canClaim: Boolean(this.pi.user),
+    });
   }
 
   // ------------------------------ loop -----------------------------------
@@ -324,12 +344,68 @@ class Game {
       },
       onWatchReplay: () => this.startReplay(),
       onShare: () => void this.share(),
+      onWatchAdRevive: () => void this.reviveViaAd(),
+      onClaimReward: () => void this.claimReward(),
       onLogin: () => void this.login(),
       onBuyUnlock: () => void this.buyUnlock(),
       onToggleSound: (on: boolean) => { this.audio.setSound(on); this.store.meta.settings.sound = on; this.store.flushMeta(); },
       onToggleMusic: (on: boolean) => { this.audio.setMusic(on); this.store.meta.settings.music = on; this.store.flushMeta(); },
       onToggleReducedMotion: (on: boolean) => { this.renderer.reducedMotion = on; this.store.meta.settings.reducedMotion = on; this.store.flushMeta(); },
     };
+  }
+
+  /** Play-to-earn: watch a rewarded ad, verify it server-side, then revive. */
+  private async reviveViaAd(): Promise<void> {
+    const ad = await this.pi.showRewardedAd();
+    if (!ad.ok) { this.ui.toast(ad.message); return; }
+    let granted = false;
+    try {
+      const r = await fetch('/api/ads/verify', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: this.pi.user?.uid, adId: ad.value.adId, kind: 'revive' }),
+      }).then((x) => x.json());
+      granted = Boolean(r?.ok);
+    } catch { granted = false; }
+    if (!granted) { this.ui.toast('Ad reward could not be verified.'); return; }
+
+    this.revivedThisRun = true;
+    this.core.revive();
+    this.ui.hideAll();
+    this.toggleControls(true);
+    if (this.store.meta.settings.music) this.audio.startMusic();
+    this.prev = { coins: this.core.coins(), shield: this.core.hasShield(), magnet: 0, boost: 0, slowmo: 0, gems: this.core.gems(), state: St.Playing };
+    this.acc = 0; this.last = performance.now();
+    this.ui.toast('Revived! Shield active 🛡');
+  }
+
+  /** Play-to-earn: claim real π for the last verified run (server-capped). */
+  private async claimReward(): Promise<void> {
+    if (!this.pi.user) { this.ui.toast('Sign in with Pi to claim rewards.'); return; }
+    if (!this.lastRun || !this.lastResult) return;
+    const r = this.lastRun;
+    try {
+      const res = await fetch('/api/rewards/claim', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uid: this.pi.user.uid, seed: r.seed, unlockShield: r.unlockShield, skin: r.skin,
+          steps: r.steps, tapeSteps: r.tapeSteps, tapeCmds: r.tapeCmds,
+          score: this.lastResult.score, coins: this.lastResult.coins, distance: this.lastResult.distance,
+        }),
+      }).then((x) => x.json());
+      if (res?.ok) this.ui.toast(res.paid ? `Earned ${res.amountPi} π! ✦` : `Reward recorded: ${res.amountPi} π`);
+      else this.ui.toast(this.rewardReason(res?.reason));
+    } catch { this.ui.toast('Could not reach the rewards server.'); }
+  }
+
+  private rewardReason(reason?: string): string {
+    switch (reason) {
+      case 'below_minimum': return 'Not enough π yet — play a bit more to reach the minimum.';
+      case 'daily_cap_reached': return "You've hit today's reward cap. Come back tomorrow!";
+      case 'already_claimed': return 'This run was already claimed.';
+      case 'unverified_run': return 'Run could not be verified.';
+      case 'rewards_disabled': return 'Rewards are not live yet.';
+      default: return 'Reward could not be processed.';
+    }
   }
 
   /** Share the game (native share sheet, falling back to copying the link). */

@@ -35,4 +35,50 @@ async function completePayment(paymentId, txid) {
   return { ok: r.ok, status: r.status, data };
 }
 
-module.exports = { hasApiKey, verifyUser, approvePayment, completePayment, PI_API_BASE };
+// ---- Pi Ad Network -------------------------------------------------------
+// Verify a rewarded ad server-side. A reward may be granted ONLY when the
+// returned mediator_ack_status is "granted" (never trust the client result).
+async function getAdNetworkStatus(adId) {
+  const r = await fetch(`${PI_API_BASE}/ads_network/status/${encodeURIComponent(adId)}`, {
+    headers: { Authorization: `Key ${PI_API_KEY}` },
+  });
+  const data = await r.json().catch(() => ({}));
+  return { ok: r.ok, status: r.status, data };
+}
+function adGranted(statusData) {
+  return Boolean(statusData && statusData.mediator_ack_status === 'granted');
+}
+
+// ---- App-to-User (A2U) payments -----------------------------------------
+// Real π payouts to users. This creates the payment record and completes it
+// once the on-chain transaction is submitted. Submitting the transaction
+// requires the app wallet's secret and the Pi/Stellar SDK; see server/wallet.js.
+async function createA2UPayment({ uid, amount, memo, metadata }) {
+  const r = await fetch(`${PI_API_BASE}/payments`, {
+    method: 'POST',
+    headers: { Authorization: `Key ${PI_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payment: { amount, memo, metadata, uid } }),
+  });
+  const data = await r.json().catch(() => ({}));
+  return { ok: r.ok, status: r.status, data };
+}
+async function completeA2UPayment(paymentId, txid) {
+  const r = await fetch(`${PI_API_BASE}/payments/${paymentId}/complete`, {
+    method: 'POST',
+    headers: { Authorization: `Key ${PI_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ txid }),
+  });
+  const data = await r.json().catch(() => ({}));
+  return { ok: r.ok, status: r.status, data };
+}
+async function cancelA2UPayment(paymentId) {
+  const r = await fetch(`${PI_API_BASE}/payments/${paymentId}/cancel`, {
+    method: 'POST', headers: { Authorization: `Key ${PI_API_KEY}` },
+  });
+  return { ok: r.ok, status: r.status };
+}
+
+module.exports = {
+  hasApiKey, verifyUser, approvePayment, completePayment, PI_API_BASE,
+  getAdNetworkStatus, adGranted, createA2UPayment, completeA2UPayment, cancelA2UPayment,
+};

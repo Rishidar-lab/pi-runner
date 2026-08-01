@@ -151,7 +151,30 @@ PI_AUTH_ENABLED:     true   // Pi login inside the Pi Browser (safe everywhere)
 PI_PAYMENTS_ENABLED: false  // optional cosmetic payment — OFF until sandbox-verified
 PI_SANDBOX:          true   // use Pi testnet during development
 LEADERBOARD_ENABLED: true   // submit runs (server re-simulates to validate)
+PI_ADS_ENABLED:      false  // rewarded ads ("watch ad to revive") — needs Pi Ad Network approval
+REWARDS_ENABLED:     false  // real-π play-to-earn payouts — needs Pi approval + funded app wallet
 ```
+
+## Play-to-earn (Pi Ad Network + A2U rewards)
+
+Two earn mechanisms, both **off by default** and both **cheat-resistant**:
+
+- **Rewarded ads** — "Watch ad to REVIVE" on game-over. The client calls
+  `Pi.Ads.showAd("rewarded")`; the server verifies the `adId` via
+  `GET /ads_network/status/:adId` and grants the perk only when Pi acks it.
+- **Real-π rewards (A2U)** — "Claim π" converts a run into a Pi payout. The
+  backend **re-simulates the run** (a faked score earns nothing), enforces a
+  **per-user daily cap** and **idempotency**, then pays from the app wallet via
+  Pi's `pi-backend` SDK. Economics are env-tunable (`REWARD_PI_PER_TOKEN`,
+  `REWARD_DAILY_CAP_PI`, `REWARD_MIN_CLAIM_PI`). Without a configured wallet,
+  claims are safely recorded as *pending* — nothing is minted.
+
+Server endpoints: `POST /api/ads/verify`, `POST /api/rewards/claim`,
+`GET /api/rewards/status`. Anti-abuse is tested in `tests/rewards.test.mjs`.
+
+**Full step-by-step launch (registration, approvals, wallet, mainnet) →
+[`PI_LAUNCH.md`](./PI_LAUNCH.md).** Privacy Policy and Terms (required for Pi's
+app review) are in [`PRIVACY.md`](./PRIVACY.md) and [`TERMS.md`](./TERMS.md).
 
 - **Payments are cosmetic only and never pay-to-win** — the single optional 1 π
   unlock grants the *Gold Orb* skin + one shield per run. The game is 100% free.

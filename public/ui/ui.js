@@ -113,9 +113,11 @@ export class UI {
       <div class="btn-row"><button class="btn-ghost" data-a="settings">Settings</button><button class="btn-ghost" data-a="quit">Quit</button></div>`);
         this.wire(p);
     }
-    showGameOver(res, unlockAvailable) {
+    showGameOver(res, opts = {}) {
         this.current = 'gameover';
-        const unlockBtn = FLAGS.PI_PAYMENTS_ENABLED && unlockAvailable ? `<button class="btn-ghost" data-a="unlock">Unlock Gold Orb + Shield · <b>${GOLD_UNLOCK.price}</b></button>` : '';
+        const unlockBtn = FLAGS.PI_PAYMENTS_ENABLED && opts.unlockAvailable ? `<button class="btn-ghost" data-a="unlock">Unlock Gold Orb + Shield · <b>${GOLD_UNLOCK.price}</b></button>` : '';
+        const reviveBtn = FLAGS.PI_ADS_ENABLED && opts.canRevive ? `<button class="btn-revive" data-a="revive">▶ Watch ad to REVIVE</button>` : '';
+        const claimBtn = FLAGS.REWARDS_ENABLED && opts.canClaim ? `<button class="btn-earn" data-a="claim">Claim <b>π</b> reward</button>` : '';
         const p = this.panel(`
       <div class="panel-eyebrow">${res.newBest ? 'NEW BEST!' : 'RUN OVER'}</div>
       <h1 class="panel-title">${res.newBest ? 'RECORD' : 'NICE RUN'}</h1>
@@ -125,7 +127,9 @@ export class UI {
         <div><span>${res.coins}</span><small>π</small></div>
         <div><span>${res.distance}</span><small>METERS</small></div>
       </div>
+      ${reviveBtn}
       <button class="btn-primary" data-a="restart">PLAY AGAIN</button>
+      ${claimBtn}
       <div class="btn-row">
         <button class="btn-ghost" data-a="replay">▶ Watch Replay</button>
         <button class="btn-ghost" data-a="share">Share</button>
@@ -225,6 +229,8 @@ export class UI {
             unlock: h.onBuyUnlock,
             replay: h.onWatchReplay,
             share: h.onShare,
+            revive: h.onWatchAdRevive,
+            claim: h.onClaimReward,
             'resume-back': h.onResume
         };
         p.querySelectorAll('[data-a]').forEach((b)=>{

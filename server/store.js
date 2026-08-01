@@ -12,7 +12,7 @@ const path = require('path');
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const FILE = path.join(DATA_DIR, 'store.json');
 
-const DEFAULT = { unlocks: {}, payments: {}, scores: [] };
+const DEFAULT = { unlocks: {}, payments: {}, scores: [], rewards: {} };
 
 function ensureDir() { fs.mkdirSync(DATA_DIR, { recursive: true }); }
 
@@ -53,4 +53,12 @@ module.exports = {
       .filter((s) => (dailyOnly ? s.daily && s.day === day : true))
       .slice(0, n)
       .map(({ name, score, coins, distance, ts }) => ({ name, score, coins, distance, ts })),
+
+  /** Reward ledger, per user, reset each UTC day. Tracks payouts + dedupe sets. */
+  getLedger: (uid, day) => {
+    const l = cache.rewards[uid];
+    if (!l || l.day !== day) return { day, claimedPi: 0, runs: {}, ads: {}, payouts: [] };
+    return l;
+  },
+  saveLedger: (uid, ledger) => { cache.rewards[uid] = ledger; persist(); },
 };
