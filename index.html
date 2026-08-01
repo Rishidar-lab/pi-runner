@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#0a0618" />
+  <title>Pi Runner — Endless Arcade</title>
+
+  <!-- Pi Network SDK. Must load before any Pi.* call. Harmless outside Pi Browser. -->
+  <script src="https://sdk.minepi.com/pi-sdk.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Chivo:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="hud">
+      <div class="brand"><span class="mark">π</span><span class="title">RUNNER</span></div>
+      <div class="hud-center">
+        <div class="score" id="score">0</div>
+        <div class="sub"><span id="best">BEST 0</span> · <span class="mult" id="mult">x1</span> · <span id="coinCount">0</span> π</div>
+        <div class="power" id="power"></div>
+      </div>
+      <div class="hud-right">
+        <button class="icon-btn hidden" id="btnPause" type="button" aria-label="Pause">II</button>
+        <button class="pi-chip" id="loginBtn" type="button">Login with Pi</button>
+      </div>
+    </header>
+
+    <div class="stage" id="stage">
+      <canvas id="game"></canvas>
+      <div class="overlay hidden" id="overlay"></div>
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+      <!-- On-screen controls (mobile) -->
+      <div class="controls hidden" id="controls">
+        <button class="ctrl" id="btnLeft" aria-label="Left">◀</button>
+        <div class="ctrl-mid">
+          <button class="ctrl" id="btnJump" aria-label="Jump">▲</button>
+          <button class="ctrl" id="btnSlide" aria-label="Slide">▼</button>
+        </div>
+        <button class="ctrl" id="btnRight" aria-label="Right">▶</button>
+      </div>
+    </div>
+
+    <footer class="foot">
+      <span id="userTag">Open in Pi Browser</span>
+      <span class="dot">•</span>
+      <span>Free to play · optional π cosmetic</span>
+    </footer>
+  </main>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
