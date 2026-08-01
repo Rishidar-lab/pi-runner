@@ -4,15 +4,19 @@ node_modules/
 .env
 
 # Build outputs
-/public/
 /build/
 /emsdk/
 
-# Generated WASM (produced by scripts/build-wasm.sh)
+# Two-file dev WASM (produced by scripts/build-wasm.sh). The committed,
+# self-contained artifacts come from scripts/build-dist.mjs instead.
 /web/src/core/pirun_core.js
 /web/src/core/pirun_core.wasm
-/server/pirun_core_node.js
 /server/pirun_core_node.wasm
 
 # Runtime data (persistent store)
 /server/data/
+
+# NOTE: /public/ and /server/pirun_core_node.js are intentionally COMMITTED as
+# self-contained (single-file, wasm-embedded) artifacts so the app can be
+# deployed with just `npm install && npm start` (no Emscripten on the host).
+# Regenerate them with `npm run build:dist`.

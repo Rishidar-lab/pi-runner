@@ -101,6 +101,36 @@ emcc core/src/sim.cpp core/bindings/wasm.cpp -I core/include -std=c++17 -O3 --bi
 node scripts/build-preview.mjs /tmp/pirun_core_single.js preview.html
 ```
 
+## Deploy without Emscripten (prebuilt artifacts)
+
+The repo commits a **self-contained build** so it runs on any Node host with no
+C++/Emscripten toolchain:
+
+- `public/` — the full web build. The C++ core here is compiled with
+  `SINGLE_FILE=1`, so the wasm is embedded as base64 inside the JS (no separate
+  binary). Everything is plain text.
+- `server/pirun_core_node.js` — the single-file node core the leaderboard uses
+  to re-simulate runs.
+
+So on a fresh host you can simply:
+
+```bash
+npm install     # express only
+npm start       # http://localhost:3000 — no build step, no emcc
+```
+
+> Host settings: **Build command = _(none)_**, **Start command = `npm start`**,
+> env `PI_API_KEY`. (Render/Railway/Replit/Fly all work.)
+
+Contributors with Emscripten can regenerate these committed artifacts with:
+
+```bash
+npm run build:dist    # requires emcc; rewrites public/ + server/pirun_core_node.js
+```
+
+CI (`.github/workflows/ci.yml`) installs Emscripten + CMake on every push/PR and
+runs `npm run build`, `npm run build:dist`, and both test suites.
+
 ## How to play
 
 | Action | Keyboard | Touch |

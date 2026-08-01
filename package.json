@@ -8,6 +8,7 @@
   "scripts": {
     "build:wasm": "bash scripts/build-wasm.sh",
     "build:web": "node scripts/build-web.mjs",
+    "build:dist": "node scripts/build-dist.mjs",
     "build": "npm run build:wasm && npm run build:web",
     "typecheck": "tsc -p web/tsconfig.json --noEmit",
     "test:core": "cmake -S core -B build/native -DCMAKE_BUILD_TYPE=Release && cmake --build build/native -j && ./build/native/pirun_tests",

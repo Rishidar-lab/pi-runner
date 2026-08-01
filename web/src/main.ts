@@ -287,4 +287,13 @@ class Game {
   }
 }
 
-window.addEventListener('load', () => { void new Game().boot(); });
+// Boot robustly regardless of when this module executes: if the document has
+// already finished parsing (e.g. the module was loaded via a late/dynamic
+// import), start immediately; otherwise wait for DOMContentLoaded. Relying on
+// the `load` event alone can miss if the module runs after `load` fired.
+function bootGame(): void { void new Game().boot(); }
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootGame, { once: true });
+} else {
+  bootGame();
+}
