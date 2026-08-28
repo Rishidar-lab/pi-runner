@@ -41,7 +41,8 @@ const SOURCES = [join(ROOT, 'core/src/sim.cpp'), join(ROOT, 'core/bindings/wasm.
 const INC = join(ROOT, 'core/include');
 
 function emcc(args) {
-  execFileSync('emcc', args, { stdio: 'inherit' });
+  // em++ (not emcc): current emsdk doesn't auto-link libc++ under emcc+LTO+embind.
+  execFileSync('em++', args, { stdio: 'inherit' });
 }
 
 async function main() {
