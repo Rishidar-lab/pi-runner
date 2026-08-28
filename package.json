@@ -1,14 +1,20 @@
 {
   "name": "pi-runner",
-  "version": "1.0.0",
-  "description": "Pi Runner — a one-thumb lane-dodge arcade game with Pi Network login and optional Pi payment unlock.",
-  "main": "server.js",
+  "version": "2.0.0",
+  "description": "Pi Runner — a polished 2D Pi-themed endless runner. Deterministic C++ core compiled to WebAssembly, TypeScript shell, and a hardened Node/Express backend with Pi login, optional cosmetic payments, and a re-simulated (anti-cheat) leaderboard.",
+  "main": "server/server.js",
   "type": "commonjs",
+  "engines": { "node": ">=22.6" },
   "scripts": {
-    "start": "node server.js"
-  },
-  "engines": {
-    "node": ">=18"
+    "build:wasm": "bash scripts/build-wasm.sh",
+    "build:web": "node scripts/build-web.mjs",
+    "build:dist": "node scripts/build-dist.mjs",
+    "build": "npm run build:wasm && npm run build:web",
+    "typecheck": "tsc -p web/tsconfig.json --noEmit",
+    "test:core": "cmake -S core -B build/native -DCMAKE_BUILD_TYPE=Release && cmake --build build/native -j && ./build/native/pirun_tests",
+    "test:js": "node --test \"tests/**/*.test.mjs\"",
+    "test": "npm run test:core && npm run test:js",
+    "start": "node server/server.js"
   },
   "dependencies": {
     "express": "^4.19.2"
