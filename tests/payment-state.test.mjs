@@ -82,7 +82,9 @@ test('leaderboard.verify accepts a genuine run and rejects an inflated score', a
   assert.equal(bad.reason, 'score mismatch');
 });
 
-test.after(() => {
-  // best-effort cleanup of the test data dir
+test.after(async () => {
+  // best-effort cleanup of the test data dir; flush store.js's debounced
+  // (setImmediate) write first so the directory isn't re-created after removal.
+  await new Promise((resolve) => setImmediate(resolve));
   try { require('node:fs').rmSync(process.env.DATA_DIR, { recursive: true, force: true }); } catch { /* ignore */ }
 });

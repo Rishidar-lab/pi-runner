@@ -13,13 +13,20 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { rmSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const FIXED = 1 / 120;
 
-// Configure the reward economics deterministically for the test.
+// Isolate state so the suite is idempotent across consecutive runs: the claim
+// ledger lives in this dir, and store.js debounces its writes via setImmediate,
+// so a leftover store.json from a prior run would poison idempotency. Wipe it
+// before loading the reward engine so every run starts from a clean ledger.
 process.env.DATA_DIR = join(ROOT, 'server', 'data-rewards-test');
+rmSync(process.env.DATA_DIR, { recursive: true, force: true });
+
+// Configure the reward economics deterministically for the test.
 process.env.REWARDS_ENABLED = '1';
 process.env.REWARD_PI_PER_TOKEN = '0.01';   // Pi per verified score point
 process.env.REWARD_DAILY_CAP_PI = '1';
@@ -97,6 +104,9 @@ test('daily cap is enforced across distinct runs', async () => {
   assert.ok(st.remainingTodayPi >= 0, 'remaining never negative');
 });
 
-test.after(() => {
-  try { require('node:fs').rmSync(process.env.DATA_DIR, { recursive: true, force: true }); } catch { /* ignore */ }
+test.after(async () => {
+  // Flush store.js's debounced (setImmediate) write so the removal below isn't
+  // undone by a still-pending persist that would re-create the directory.
+  await new Promise((resolve) => setImmediate(resolve));
+  try { rmSync(process.env.DATA_DIR, { recursive: true, force: true }); } catch { /* ignore */ }
 });

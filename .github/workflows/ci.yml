@@ -28,11 +28,13 @@ jobs:
         with:
           node-version: "22"
       - run: npm ci
-      - name: Run the JS suites
+      - name: Run the JS suites (first pass)
         run: npm run test:js
-      # TODO: re-add a second `npm run test:js` here once OpenCode task 001 makes
-      # tests/rewards.test.mjs state-isolated (it currently leaks
-      # server/data-rewards-test/ between runs — see PI_RUNNER_TEST_REPORT.md).
+      # Idempotency guard: the reward suite now wipes its isolated ledger before
+      # loading and flushes the store's debounced write before cleanup, so a
+      # second consecutive run must pass with no manual rm (OpenCode task 001).
+      - name: Run the JS suites (idempotency pass)
+        run: npm run test:js
 
   wasm-build:
     name: Emscripten build + committed-artifact check
