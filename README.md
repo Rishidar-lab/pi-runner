@@ -95,7 +95,7 @@ npm run test:js   # backend payment-state machine + leaderboard anti-cheat
 
 ```bash
 # builds a single self-contained preview.html (wasm embedded) you can open or share
-emcc core/src/sim.cpp core/bindings/wasm.cpp -I core/include -std=c++17 -O3 --bind \
+em++ core/src/sim.cpp core/bindings/wasm.cpp -I core/include -std=c++17 -O3 --bind \
   -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=createPirunCore -sENVIRONMENT=web \
   -sALLOW_MEMORY_GROWTH=1 -sFILESYSTEM=0 -sSINGLE_FILE=1 -o /tmp/pirun_core_single.js
 node scripts/build-preview.mjs /tmp/pirun_core_single.js preview.html
