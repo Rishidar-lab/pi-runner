@@ -7,7 +7,12 @@ web
 core
 tests
 scripts
+landing
+docs
 preview.html
+*.md
 *.log
 .env
+.env.*
 server/data
+server/data-test*

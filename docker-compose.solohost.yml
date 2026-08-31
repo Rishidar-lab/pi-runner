@@ -3,23 +3,48 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: pi-runner:solohost
     restart: unless-stopped
+    init: true                       # PID 1 reaps zombies; SIGTERM forwarded
     environment:
       PORT: "3000"
       DATA_DIR: /data
+      # Node Challenge runs fully locally by default. Leave PI_API_KEY empty for
+      # a local-first node; set it to require verified Pi identity on submissions.
       PI_API_KEY: ${PI_API_KEY:-}
+      # Optional: a node-private challenge seed namespace (unset = shared public
+      # namespace, so every node derives the same daily seed).
+      NODE_CHALLENGE_SECRET: ${NODE_CHALLENGE_SECRET:-}
+      # Optional: allow local (unauthenticated) identities even when PI_API_KEY
+      # is set — for demoing the challenge without signing in.
+      NODE_CHALLENGE_DEMO: ${NODE_CHALLENGE_DEMO:-0}
+      CHALLENGE_RETENTION_DAYS: ${CHALLENGE_RETENTION_DAYS:-30}
+      # Money stays off by default.
       PI_ADS_ENABLED: ${PI_ADS_ENABLED:-0}
       REWARDS_ENABLED: ${REWARDS_ENABLED:-0}
       REWARD_PI_PER_TOKEN: ${REWARD_PI_PER_TOKEN:-0.001}
       REWARD_DAILY_CAP_PI: ${REWARD_DAILY_CAP_PI:-0.25}
       REWARD_MIN_CLAIM_PI: ${REWARD_MIN_CLAIM_PI:-0.05}
       PI_WALLET_PASSPHRASE: ${PI_WALLET_PASSPHRASE:-}
+    # Publish only on loopback — a SoloHost node is not a public server.
     ports:
       - "127.0.0.1:${PIRUN_PORT:-3000}:3000"
     volumes:
       - pi_runner_data:/data
+    # Container hardening.
+    read_only: true                  # only /data (a volume) and /tmp are writable
+    tmpfs:
+      - /tmp
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
 volumes:
   pi_runner_data:
