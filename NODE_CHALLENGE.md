@@ -216,6 +216,18 @@ docker-compose.solohost.yml: localhost-only, read-only rootfs, cap_drop ALL,
 `npm run build:frontend` refreshes `public/` from `web/src` **without** emcc, for
 contributors on a machine with no toolchain.
 
+The committed `public/core/pirun_core.js` and `server/pirun_core_node.js` are
+produced by a single `npm run build:dist` run from the same `core/` sources, so
+the browser and the server re-simulate identical logic. CI (`wasm-build`)
+rebuilds both on every push and diffs them against git; that diff is currently a
+**warning, not a failure**, because Emscripten's byte output drifts between emsdk
+versions and the version that produced the committed blobs is not yet pinned.
+
+**Follow-up:** pin the exact emsdk version in `scripts/build-wasm.sh` /
+`scripts/build-dist.mjs` and in `.github/workflows/ci.yml` (`wasm-build` uses
+`version: latest` today), then make the `build:dist` reproducibility diff fatal
+so a stale committed core can never be merged.
+
 ## 11. Privacy
 
 - No accounts required. Local play uses a name you type, stored only in your
@@ -238,6 +250,10 @@ contributors on a machine with no toolchain.
   legitimately well.
 - The store is a single JSON file with atomic writes — right for SoloHost scale,
   not for thousands of concurrent nodes.
+- The emsdk version that built the committed WASM cores is not pinned, so CI's
+  reproducibility check is a warning rather than a hard gate (see §10). The
+  cores are still built from one source tree in one run; only the toolchain
+  version is unfixed.
 
 ## 13. Future distributed extension
 
