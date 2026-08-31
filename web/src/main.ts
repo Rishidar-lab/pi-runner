@@ -7,14 +7,14 @@
  * step index — this "command tape" (seed + inputs) is what the server replays
  * to validate a leaderboard score.
  */
-import { loadCore, Cmd, St, Pickup, type CoreModule, type RunnerHandle } from './core/coreLoader.js';
+import { loadCore, Cmd, St, type CoreModule, type RunnerHandle } from './core/coreLoader.js';
 import { Renderer } from './render/renderer.js';
 import { Input, type InputEvent } from './input/input.js';
 import { Audio } from './audio/audio.js';
 import { UI } from './ui/ui.js';
 import { Store } from './persistence/store.js';
 import { PiAdapter } from './pi/piAdapter.js';
-import { skinByIndex, SKINS } from './game/skins.js';
+import { SKINS } from './game/skins.js';
 import { evaluate as evalAchievements, type RunResult } from './game/achievements.js';
 import { ensureDailyMissions, applyRunToMissions, dailySeed } from './game/missions.js';
 import { FLAGS } from './config.js';

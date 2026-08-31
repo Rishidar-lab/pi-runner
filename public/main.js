@@ -1,11 +1,11 @@
-import { loadCore, Cmd, St, Pickup } from './core/coreLoader.js';
+import { loadCore, Cmd, St } from './core/coreLoader.js';
 import { Renderer } from './render/renderer.js';
 import { Input } from './input/input.js';
 import { Audio } from './audio/audio.js';
 import { UI } from './ui/ui.js';
 import { Store } from './persistence/store.js';
 import { PiAdapter } from './pi/piAdapter.js';
-import { skinByIndex, SKINS } from './game/skins.js';
+import { SKINS } from './game/skins.js';
 import { evaluate as evalAchievements } from './game/achievements.js';
 import { ensureDailyMissions, applyRunToMissions, dailySeed } from './game/missions.js';
 import { FLAGS } from './config.js';
