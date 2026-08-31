@@ -15,7 +15,9 @@
 // Google. Inline styles are used by generated UI panels (style="width:..%").
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' https://sdk.minepi.com",
+  // 'wasm-unsafe-eval' lets the browser instantiate the deterministic C++ core
+  // (compiled to WebAssembly). It does NOT permit JavaScript eval().
+  "script-src 'self' 'wasm-unsafe-eval' https://sdk.minepi.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data:",

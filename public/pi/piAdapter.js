@@ -3,6 +3,9 @@ export class PiAdapter {
     available;
     user = null;
     accessToken = null;
+    get token() {
+        return this.accessToken;
+    }
     constructor(){
         this.available = typeof window !== 'undefined' && typeof window.Pi !== 'undefined';
         if (this.available && FLAGS.PI_AUTH_ENABLED) {

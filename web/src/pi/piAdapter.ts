@@ -52,6 +52,9 @@ export class PiAdapter {
   user: PiUser | null = null;
   private accessToken: string | null = null;
 
+  /** The current Pi access token, if the Pioneer is signed in (server-verified). */
+  get token(): string | null { return this.accessToken; }
+
   constructor() {
     this.available = typeof window !== 'undefined' && typeof window.Pi !== 'undefined';
     if (this.available && FLAGS.PI_AUTH_ENABLED) {

@@ -11,6 +11,20 @@ import { ACHIEVEMENTS } from '../game/achievements.js';
 import { missionDef } from '../game/missions.js';
 import type { MetaDoc } from '../persistence/store.js';
 import { FLAGS, GOLD_UNLOCK } from '../config.js';
+import {
+  type ChallengeInfo, type LeaderboardRow, type LeaderboardView, type NodeStatus, type VerifyResult,
+  reasonText, timeRemaining, challengeLabel,
+} from '../game/nodeChallenge.js';
+
+export interface NodeChallengeScreenData {
+  challenge: ChallengeInfo;
+  nodeLabel: string;
+  best: number;
+  myBest: number;
+  top: LeaderboardRow[];
+  isPiUser: boolean;
+  localName: string;
+}
 
 export interface UIHandlers {
   onPlay(): void;
@@ -29,12 +43,20 @@ export interface UIHandlers {
   onClaimReward(): void;
   onLogin(): void;
   onBuyUnlock(): void;
+  onNodeChallenge(): void;
+  onNodeChallengePlay(): void;
+  onOpenNodeDashboard(): void;
+  onOpenChallengeLeaderboard(): void;
+  onSetLocalName(name: string): void;
   onToggleSound(on: boolean): void;
   onToggleMusic(on: boolean): void;
   onToggleReducedMotion(on: boolean): void;
 }
 
-type ScreenName = 'menu' | 'tutorial' | 'pause' | 'gameover' | 'settings' | 'skins' | 'missions' | null;
+type ScreenName =
+  | 'menu' | 'tutorial' | 'pause' | 'gameover' | 'settings' | 'skins' | 'missions'
+  | 'loading' | 'nodechallenge' | 'verifying' | 'challengeresult' | 'nodedash' | 'challengeboard'
+  | null;
 
 export class UI {
   private overlay: HTMLElement;
@@ -45,6 +67,7 @@ export class UI {
   };
   private toastTimer = 0;
   private replayHud: HTMLElement | null = null;
+  private challengeBadge: HTMLElement | null = null;
   current: ScreenName = null;
 
   constructor(private root: HTMLElement, private handlers: UIHandlers) {
@@ -108,6 +131,10 @@ export class UI {
       <p class="panel-sub">Dash through the Pi grid. Switch lanes, <b>jump</b> hurdles, <b>slide</b> under bars, and bank <b>π</b>.</p>
       <div class="panel-stats"><div><span>${best}</span><small>BEST</small></div><div><span>${totalCoins}</span><small>π TOTAL</small></div></div>
       <button class="btn-primary" data-a="play">PLAY</button>
+      <button class="btn-node" data-a="nodechallenge">
+        <span class="btn-node-mark">◆</span>
+        <span class="btn-node-text"><b>NODE CHALLENGE</b><small>Same course · verified by your Node</small></span>
+      </button>
       <div class="btn-row">
         <button class="btn-ghost" data-a="daily">Daily Run</button>
         <button class="btn-ghost" data-a="skins">Skins</button>
@@ -116,7 +143,7 @@ export class UI {
         <button class="btn-ghost" data-a="missions">Missions</button>
         <button class="btn-ghost" data-a="settings">Settings</button>
       </div>
-      <p class="panel-note">Free to play. Controls: arrows / WASD, or swipe & tap.</p>`);
+      <p class="panel-note">Free to play · <a class="link" data-a="nodedash">Node status</a></p>`);
     this.wire(p);
   }
 
@@ -193,6 +220,162 @@ export class UI {
   }
   hideReplayHud(): void { this.replayHud?.remove(); this.replayHud = null; }
 
+  /** Minimal in-run indicator that this run is a Node Challenge. */
+  setChallengeBadge(on: boolean): void {
+    if (on) {
+      if (this.challengeBadge) return;
+      const el = document.createElement('div');
+      el.className = 'nc-badge';
+      el.innerHTML = '<span class="nc-dot"></span> NODE CHALLENGE';
+      this.root.appendChild(el);
+      this.challengeBadge = el;
+    } else {
+      this.challengeBadge?.remove();
+      this.challengeBadge = null;
+    }
+  }
+
+  // ---------------------- Node Challenge screens -----------------------
+  showLoading(msg: string): void {
+    this.current = 'loading';
+    this.panel(`<div class="nc-spinner"></div><p class="panel-sub" style="margin-top:14px">${esc(msg)}</p>`);
+  }
+
+  showNodeChallenge(d: NodeChallengeScreenData): void {
+    this.current = 'nodechallenge';
+    const c = d.challenge;
+    const nameField = d.isPiUser ? '' : `
+      <label class="nc-name">
+        <span>Play as</span>
+        <input type="text" id="ncName" maxlength="24" placeholder="Player" value="${esc(d.localName)}" />
+      </label>`;
+    const top = d.top.length
+      ? `<ol class="nc-mini-board">${d.top.map((e) => `<li><span>${e.rank}</span><b>${esc(e.username)}</b><em>${e.score}</em></li>`).join('')}</ol>`
+      : '<p class="panel-note">No verified runs yet today — be first.</p>';
+    const p = this.panel(`
+      <div class="panel-eyebrow">NODE CHALLENGE</div>
+      <h1 class="panel-title">TODAY'S RUN</h1>
+      <p class="panel-sub">Same course. Same rules. <b>Verified by your Pi Runner Node.</b></p>
+      <div class="nc-meta">
+        <div><span>${esc(challengeLabel(c.id))}</span><small>CHALLENGE</small></div>
+        <div><span id="ncTime">${timeRemaining(c.endsAt)}</span><small>REMAINING</small></div>
+        <div><span>${d.myBest || '—'}</span><small>YOUR BEST</small></div>
+      </div>
+      <div class="nc-seed" title="${esc(c.id)}">
+        <span class="nc-seed-k">SEED</span>
+        <code>${(c.seed >>> 0).toString(16).padStart(8, '0')}</code>
+        <span class="nc-seed-tag">${c.seedNamespace === 'public' ? 'shared' : 'node-private'}</span>
+      </div>
+      ${nameField}
+      <button class="btn-primary" data-a="ncplay">START CHALLENGE</button>
+      <div class="nc-board-head">TOP VERIFIED</div>
+      ${top}
+      <div class="btn-row">
+        <button class="btn-ghost" data-a="ncboard">Full leaderboard</button>
+        <button class="btn-ghost" data-a="back">Back</button>
+      </div>
+      <p class="panel-note">Verified by ${esc(d.nodeLabel)} · the browser's score is never trusted.</p>`);
+    const nameInput = p.querySelector('#ncName') as HTMLInputElement | null;
+    if (nameInput) {
+      nameInput.addEventListener('change', () => this.handlers.onSetLocalName(nameInput.value.trim()));
+    }
+    // live-tick the remaining time while this screen is open
+    const timeEl = p.querySelector('#ncTime');
+    if (timeEl) {
+      const iv = window.setInterval(() => {
+        if (this.current !== 'nodechallenge' || !document.body.contains(timeEl)) { clearInterval(iv); return; }
+        timeEl.textContent = timeRemaining(c.endsAt);
+      }, 1000);
+    }
+    this.wire(p);
+  }
+
+  showVerifying(): void {
+    this.current = 'verifying';
+    this.panel(`
+      <div class="panel-eyebrow">NODE CHALLENGE</div>
+      <h1 class="panel-title">VERIFYING RUN…</h1>
+      <div class="nc-verify">
+        <div class="nc-spinner"></div>
+        <p class="panel-sub">Your Pi Runner Node is independently re-simulating the run from its seed and your input tape.</p>
+      </div>`);
+  }
+
+  showChallengeResult(res: VerifyResult, challengeId: string, name: string): void {
+    this.current = 'challengeresult';
+    if (res.ok && res.verified) {
+      const r = res.result;
+      const rank = res.rank ? `#${res.rank}` : '—';
+      const p = this.panel(`
+        <div class="panel-eyebrow ok">RUN VERIFIED</div>
+        <div class="nc-seal"><span>✓</span>VERIFIED BY NODE ${esc(res.nodeIdShort)}</div>
+        <div class="panel-stats">
+          <div><span>${r.score}</span><small>VERIFIED SCORE</small></div>
+          <div><span>${rank}</span><small>RANK</small></div>
+          <div><span>${r.distance}</span><small>METERS</small></div>
+          <div><span>${r.coins}</span><small>π</small></div>
+        </div>
+        <p class="panel-note">${esc(challengeLabel(challengeId))} · ${esc(name)}${res.idempotent ? ' · already recorded' : ''} · replayed in ${res.latencyMs} ms</p>
+        <button class="btn-primary" data-a="ncplay">PLAY AGAIN</button>
+        <div class="btn-row">
+          <button class="btn-ghost" data-a="ncboard">Leaderboard</button>
+          <button class="btn-ghost" data-a="back">Menu</button>
+        </div>`);
+      this.wire(p);
+      return;
+    }
+    const reason = (res as { reason?: string }).reason;
+    const p = this.panel(`
+      <div class="panel-eyebrow bad">RUN REJECTED</div>
+      <h1 class="panel-title">NOT VERIFIED</h1>
+      <p class="panel-sub">${esc(reason === 'NETWORK' ? 'Could not reach your Pi Runner Node — the run was not submitted.' : reasonText(reason))}</p>
+      <p class="panel-note">Only runs the Node can reproduce from your input tape are recorded. Nothing was added to the leaderboard.</p>
+      <button class="btn-primary" data-a="ncplay">TRY AGAIN</button>
+      <button class="btn-ghost" data-a="back">Menu</button>`);
+    this.wire(p);
+  }
+
+  showNodeDashboard(s: NodeStatus): void {
+    this.current = 'nodedash';
+    const up = fmtUptime(s.node.uptimeSeconds);
+    const p = this.panel(`
+      <div class="panel-eyebrow">PI RUNNER NODE</div>
+      <h1 class="panel-title">${esc(s.node.label)}</h1>
+      <div class="nc-status"><span class="nc-dot"></span>${esc(s.node.status)}</div>
+      <dl class="nc-kv">
+        <div><dt>Node ID</dt><dd><code>${esc(s.node.idShort)}</code></dd></div>
+        <div><dt>App version</dt><dd>${esc(s.node.appVersion)}</dd></div>
+        <div><dt>Simulation</dt><dd>${esc(s.node.simulationVersion)}</dd></div>
+        <div><dt>Uptime</dt><dd>${up}</dd></div>
+        <div><dt>Today's challenge</dt><dd>${esc(challengeLabel(s.challenge.id))}</dd></div>
+        <div><dt>Verified runs today</dt><dd>${s.today.verifiedRuns}</dd></div>
+        <div><dt>Rejected runs today</dt><dd>${s.today.rejectedRuns}</dd></div>
+        <div><dt>Best verified score</dt><dd>${s.today.bestVerifiedScore || '—'}</dd></div>
+        <div><dt>Persistent storage</dt><dd>${s.node.persistentStorage ? 'ready' : 'unavailable'}</dd></div>
+      </dl>
+      <button class="btn-primary" data-a="back">Back</button>`);
+    this.wire(p);
+  }
+
+  showChallengeLeaderboard(board: LeaderboardView, name: string): void {
+    this.current = 'challengeboard';
+    const rows = board.entries.length
+      ? board.entries.map((e) => `
+        <div class="nc-row ${e.username === name ? 'me' : ''}">
+          <span class="nc-rank">${e.rank}</span>
+          <span class="nc-user">${esc(e.username)}${e.identityKind === 'pi' ? ' <em class="nc-pi">π</em>' : ''}</span>
+          <span class="nc-score">${e.score}</span>
+        </div>`).join('')
+      : '<p class="panel-note">No verified runs yet.</p>';
+    const p = this.panel(`
+      <div class="panel-eyebrow">VERIFIED LEADERBOARD</div>
+      <h1 class="panel-title">${esc(challengeLabel(board.challengeId))}</h1>
+      <p class="panel-note">${board.count} verified run${board.count === 1 ? '' : 's'} on ${esc(board.scope)} · Node ${esc(board.nodeIdShort)}</p>
+      <div class="nc-board">${rows}</div>
+      <button class="btn-primary" data-a="back">Back</button>`);
+    this.wire(p);
+  }
+
   showSettings(meta: MetaDoc, back: ScreenName): void {
     this.current = 'settings';
     const s = meta.settings;
@@ -264,6 +447,8 @@ export class UI {
       replay: h.onWatchReplay, share: h.onShare,
       revive: h.onWatchAdRevive, claim: h.onClaimReward,
       'resume-back': h.onResume,
+      nodechallenge: h.onNodeChallenge, ncplay: h.onNodeChallengePlay,
+      nodedash: h.onOpenNodeDashboard, ncboard: h.onOpenChallengeLeaderboard,
     };
     p.querySelectorAll('[data-a]').forEach((b) => {
       const a = (b as HTMLElement).dataset.a!;
@@ -275,4 +460,18 @@ export class UI {
 function must<T extends Element>(el: T | null): T {
   if (!el) throw new Error('UI element missing');
   return el;
+}
+
+/** Escape untrusted strings (usernames, challenge ids) before HTML interpolation. */
+function esc(s: unknown): string {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string
+  ));
+}
+
+function fmtUptime(sec: number): string {
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`;
+  return `${Math.floor(sec / 86400)}d ${Math.floor((sec % 86400) / 3600)}h`;
 }
