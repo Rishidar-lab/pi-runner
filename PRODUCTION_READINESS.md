@@ -106,9 +106,22 @@ npm start              # http://localhost:3000  — play in any browser
 realtime; a typical crashed run verifies in ~0.15 ms, the 30-minute hard cap
 (216 000 ticks) in ~50 ms. Linear in tick count.
 
+**Reproducible WASM** — release toolchain pinned to **Emscripten 6.0.8**
+(`EXPECTED_EMCC` in `scripts/build-dist.mjs`, guard in `scripts/build-wasm.sh`,
+`version: "6.0.8"` in CI). `build:dist` output is byte-identical across repeated
+builds; CI's `wasm-build` job rebuilds the committed `public/core/pirun_core.js`
++ `server/pirun_core_node.js` and runs `git diff --exit-code` — a stale artifact
+**fails CI**. Toolchain 4.x → 6.0.8 was byte-different but behaviourally
+identical (2400 runs + 200 `verifyRun` cross-checked), so `SIMULATION_VERSION`
+stayed `1.0.0`.
+
+**Dependencies** — `npm audit` → **0 vulnerabilities** (`body-parser` bumped
+1.20.5 → 1.20.6 within express 4.22.2's `~1.20.5` range; non-breaking).
+
 **Container** — `docker build` from committed artifacts (no emcc), boots
-read-only as uid 1000, goes healthy, `docker stop` in <1 s, node identity +
-leaderboard survive `docker compose restart`.
+read-only as uid 1000 with `cap_drop: ALL` + `no-new-privileges`, goes healthy,
+`docker compose stop` in ~0.25 s (store flushed), node identity + leaderboard
+survive `docker compose restart`.
 
 **Not done / limitations** — Node Challenge is **local** authoritative
 verification on one SoloHost install. It is **not** decentralized consensus or Pi

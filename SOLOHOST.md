@@ -157,10 +157,12 @@ leaderboard. `server/challenge/coordinator.js` defines the
 coordinator would implement; the node already signs run tokens with its own key.
 See [`NODE_CHALLENGE.md`](./NODE_CHALLENGE.md).
 
+The release toolchain is pinned to **Emscripten 6.0.8**; the committed WASM
+cores rebuild byte-for-byte and CI (`wasm-build`) rejects a stale artifact via
+`git diff --exit-code` after a fresh `build:dist`.
+
 ### Beyond this milestone
 
-- Pin the emsdk version that produced the committed WASM so the CI
-  reproducibility check can be made fatal.
 - A `PiNetworkChallengeCoordinator` that pushes node-signed VERIFIED results to a
   shared coordinator for cross-node aggregation — once such a coordinator exists.
 - Anomaly checks for legitimately-played but automated runs.

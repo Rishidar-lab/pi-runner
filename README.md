@@ -66,7 +66,7 @@ pi-runner/
 | Tool | Why | Notes |
 |------|-----|-------|
 | **Node ≥ 22.6** | build + server | Uses Node's built-in TypeScript transform (no bundler dependency). |
-| **Emscripten** (`emcc`) | compile C++ → WASM | Install via [emsdk](https://emscripten.org/docs/getting_started/downloads.html). |
+| **Emscripten 6.0.8** (`emcc`) | compile C++ → WASM | Pinned. `emsdk install 6.0.8 && emsdk activate 6.0.8`. `build:dist` refuses any other version; CI gates the committed WASM on it. |
 | **CMake + a C++17 compiler** | run the native test suite | e.g. `gcc-c++`/`clang`. Not needed to run the game. |
 
 ## Build & run
@@ -133,14 +133,18 @@ npm start       # http://localhost:3000 — no build step, no emcc
 > Host settings: **Build command = _(none)_**, **Start command = `npm start`**,
 > env `PI_API_KEY`. (Render/Railway/Replit/Fly all work.)
 
-Contributors with Emscripten can regenerate these committed artifacts with:
+Contributors with the pinned Emscripten (**6.0.8**) can regenerate these
+committed artifacts with:
 
 ```bash
-npm run build:dist    # requires emcc; rewrites public/ + server/pirun_core_node.js
+npm run build:dist    # requires emcc 6.0.8 exactly; rewrites public/core + server/pirun_core_node.js
 ```
 
-CI (`.github/workflows/ci.yml`) installs Emscripten + CMake on every push/PR and
-runs `npm run build`, `npm run build:dist`, and both test suites.
+The output is byte-reproducible: CI (`.github/workflows/ci.yml`) installs
+Emscripten 6.0.8 + CMake on every push/PR, runs `npm run build` and
+`npm run build:dist`, and then `git diff --exit-code` on the WASM artifacts — a
+stale committed core fails the build. `npm run build:frontend` (no emcc) keeps
+the transpiled `public/*.js` in sync separately.
 
 ## How to play
 

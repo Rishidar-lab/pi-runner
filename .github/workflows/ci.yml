@@ -65,7 +65,7 @@ jobs:
           fi
 
   wasm-build:
-    name: Emscripten build + committed-artifact check
+    name: Emscripten 6.0.8 build + reproducible-artifact gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,10 +74,11 @@ jobs:
           node-version: "22"
       - uses: mymindstorm/setup-emsdk@v14
         with:
-          # TODO(LANE 0): pin to the emsdk version that produced the committed
-          # public/ + server/pirun_core_node.js so the reproducibility check can
-          # be made fatal. Using latest until that version is identified.
-          version: latest
+          # Pinned release toolchain. Keep in sync with EXPECTED_EMCC in
+          # scripts/build-dist.mjs and scripts/build-wasm.sh. Emscripten 6.0.8
+          # produces byte-reproducible output for this project, so the committed
+          # WASM artifacts are gated below.
+          version: "6.0.8"
           actions-cache-folder: emsdk-cache
       - run: emcc --version
       - run: npm ci
@@ -86,19 +87,13 @@ jobs:
       - name: npm run build
         run: npm run build
 
-      # Regenerate the committed self-contained artifacts and check they still
-      # match what's in git. Emscripten output can drift between emsdk versions,
-      # so a diff here is reported, not fatal — until the emsdk version that
-      # produced the committed artifacts is pinned (see PI_RUNNER_BACKLOG LANE 0).
-      - name: npm run build:dist (reproducibility check — informational)
+      # HARD GATE: a fresh build:dist with the pinned toolchain must reproduce the
+      # committed self-contained artifacts byte-for-byte. A stale committed core
+      # fails CI.
+      - name: Reproducible WASM gate (build:dist must match git exactly)
         run: |
           npm run build:dist
-          if ! git diff --quiet -- public server/pirun_core_node.js; then
-            echo "::warning::committed public/ or server/pirun_core_node.js differs from a fresh build:dist (likely emsdk version drift)"
-            git diff --stat -- public server/pirun_core_node.js || true
-          else
-            echo "committed artifacts reproduce exactly"
-          fi
+          git diff --exit-code -- public server/pirun_core_node.js
 
       - name: Standalone shareable preview build
         run: |
