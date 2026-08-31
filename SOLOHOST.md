@@ -1,24 +1,31 @@
 # Pi Runner on Pi SoloHost
 
-Pi Runner is a strong SoloHost candidate because it is already a self-contained local web service:
+Pi Runner is a SoloHost-native game: every install is a local game server **and**
+a deterministic verification node (see [`NODE_CHALLENGE.md`](./NODE_CHALLENGE.md)).
 
 - deterministic C++17 simulation compiled to WebAssembly;
 - TypeScript/browser game shell;
 - Node/Express local backend;
-- server-side replay verification for leaderboard submissions;
-- persistent local state;
-- Pi authentication/payment integration behind feature flags.
+- **Node Challenge** — a server-issued daily seed, client input tape, and
+  independent server-side re-simulation; only reproduced runs are VERIFIED;
+- server-side replay verification for the classic leaderboard too;
+- persistent local state (one `/data` volume, schema-versioned, bounded retention);
+- Pi authentication/payment integration behind feature flags, off by default.
 
 ## Local container test
 
 ```bash
 git checkout solohost/pi-runner
-docker compose -f docker-compose.solohost.yml build
-docker compose -f docker-compose.solohost.yml up -d
-curl http://127.0.0.1:3000/api/rewards/status
+docker compose -f docker-compose.solohost.yml up -d --build
+curl http://127.0.0.1:3000/api/health
+curl http://127.0.0.1:3000/api/challenge/current
+curl http://127.0.0.1:3000/api/node/status
 ```
 
-Open `http://127.0.0.1:3000` in a browser and play a complete run.
+Open `http://127.0.0.1:3000` in a browser, click **NODE CHALLENGE**, and play a
+complete run — the node verifies it and places it on the verified leaderboard.
+Add `NODE_CHALLENGE_DEMO=1` to the environment to submit without signing in
+with Pi.
 
 Stop/remove the container without deleting persistent data:
 
@@ -35,12 +42,24 @@ docker compose -f docker-compose.solohost.yml down -v
 ## Security/defaults
 
 - The container runs as the unprivileged `node` user.
-- `no-new-privileges` is enabled in the compose definition.
-- The service binds to `127.0.0.1` rather than all interfaces.
-- Pi API keys and wallet secrets are provided only through environment variables.
-- Pi ads and real-Pi rewards remain disabled by default.
-- `/data` is the only persistent application volume.
-- Production browser/WASM artifacts are already committed, so the runtime image does not contain Emscripten, CMake, compilers, source code, or the build toolchain.
+- `no-new-privileges`, `read_only` rootfs (+ `/tmp` tmpfs), `cap_drop: ALL`, and
+  `init: true` are set in the compose definition.
+- The service publishes its port on `127.0.0.1` only. Inside the container it
+  binds `0.0.0.0` (needed for port mapping); override with `BIND_HOST`.
+- Security headers on every response (nosniff, `SAMEORIGIN`, a tuned CSP allowing
+  self + the Pi SDK + Google Fonts + `wasm-unsafe-eval`, COOP/CORP,
+  Permissions-Policy). No `helmet` dependency — `express` is still the only
+  runtime dependency.
+- Per-endpoint in-memory rate limits on the challenge routes; bounded JSON body
+  sizes; strict input-tape validation before any replay CPU is spent.
+- Pi API keys and wallet secrets come only from environment variables and never
+  reach the client bundle. The node's own signing secret never leaves the process.
+- Pi ads and real-Pi rewards remain disabled by default. Node Challenge is not
+  pay-to-win — the competitive simulation ignores cosmetics.
+- `/data` is the only persistent application volume. Graceful SIGTERM flushes the
+  store before exit.
+- Production browser/WASM artifacts are committed, so the runtime image contains
+  no Emscripten, CMake, compilers, source, or build toolchain.
 
 ## SoloHost publisher flow
 
@@ -56,13 +75,45 @@ Recommended order:
 6. Verify cold install, restart, state persistence, and uninstall/reinstall behavior.
 7. Publish as **listed** only after those checks pass.
 
-## Positioning
+## SoloHost listing material
 
 ### Name
-Pi Runner — Deterministic Arcade Node Game
+
+Pi Runner
 
 ### Short description
-A locally hosted Pi arcade runner with a deterministic WebAssembly game core, verified replays, daily seeded runs and Pi-native identity.
+
+A deterministic Pi arcade game whose SoloHost node independently replays and
+verifies competitive runs.
+
+### Long description
+
+Pi Runner is a polished 2D endless runner whose entire game simulation —
+movement, obstacles, collectibles, scoring, seeded procedural generation — is
+written in deterministic C++17 and compiled to WebAssembly. The browser renders
+and takes input; it is never the authority for anything that matters.
+
+On SoloHost, every install is also a **verification node**. Each day the node
+derives a shared challenge seed (HMAC over the date — the same course on every
+node, with no coordination). You play the run in the Pi Browser; the client
+records an input tape; your node re-simulates the run from scratch with the exact
+same C++ core and computes the score itself. Only a run the node can reproduce
+becomes **VERIFIED** and reaches the leaderboard. A manipulated score is rejected
+with a reason code and nothing is recorded.
+
+Everything runs locally: challenge generation, run sessions, replay verification,
+the verified leaderboard, the node dashboard, and persistence all work with no
+cloud and no Pi credentials. Pi login and optional cosmetic payments layer on
+when configured; ads and payouts are off by default and the competitive
+simulation is identical for every player.
+
+Not claimed: this is **local** authoritative verification on one installation —
+not decentralized consensus, not Pi blockchain validation. The code defines the
+interfaces a future cross-node coordinator would use; it does not fake one.
+
+### Suggested tags
+
+`Gaming` · `Developer Tools` · `SoloHost` · `WebAssembly` · `Pi Browser`
 
 ### Why it belongs in SoloHost
 
@@ -96,6 +147,20 @@ Recommended demo evidence:
 7. restart the container and show persistent state;
 8. show that Pi credentials remain server-side and rewards/payments are disabled by default.
 
-## Next SoloHost-native milestone
+## Node Challenge — shipped
 
-Add a **Node Challenge** mode: each local Pi Runner instance generates a shared daily deterministic seed, verifies local runs itself, and can optionally submit signed/verified results to a future global coordinator. This gives SoloHost a real gameplay role rather than using it only as a packaging mechanism.
+The **Node Challenge** milestone is implemented on this branch: each install
+generates a shared daily deterministic seed, issues server-side run sessions,
+verifies runs by independent re-simulation, and keeps a VERIFIED-only
+leaderboard. `server/challenge/coordinator.js` defines the
+`ChallengeCoordinator` / `NodeFederationAdapter` interfaces a future global
+coordinator would implement; the node already signs run tokens with its own key.
+See [`NODE_CHALLENGE.md`](./NODE_CHALLENGE.md).
+
+### Beyond this milestone
+
+- Pin the emsdk version that produced the committed WASM so the CI
+  reproducibility check can be made fatal.
+- A `PiNetworkChallengeCoordinator` that pushes node-signed VERIFIED results to a
+  shared coordinator for cross-node aggregation — once such a coordinator exists.
+- Anomaly checks for legitimately-played but automated runs.

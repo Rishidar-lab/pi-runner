@@ -13,6 +13,15 @@ leaderboard**.
 > core is deterministic, the server can **re-simulate any run from its seed +
 > input tape** to validate leaderboard scores — real anti-cheat, not trust.
 
+> **Node Challenge (SoloHost).** Every SoloHost install is a local game server
+> *and* a deterministic verification node. Players get a server-issued daily seed
+> (HMAC-derived — same course on every node), play the run, and submit the input
+> tape; the node independently re-simulates it with the same C++ core and only a
+> reproduced run becomes **VERIFIED**. The browser is never the authority for
+> score, distance, π, or leaderboard placement. Full design →
+> [`NODE_CHALLENGE.md`](./NODE_CHALLENGE.md), demo →
+> [`docs/DEMO_SCRIPT.md`](./docs/DEMO_SCRIPT.md).
+
 <sub>Note: Pi ecosystem apps run inside the **Pi Browser** and must be web apps.
 Native C++ can't run there, so the C++ core is delivered as WebAssembly and
 wrapped in the web shell that loads the Pi SDK — the standard, supported way to
@@ -86,9 +95,11 @@ npm start                   # http://localhost:3000
 ### Tests
 
 ```bash
-npm test          # runs both suites
-npm run test:core # 44 native C++ assertions (RNG, saves, collisions, scoring, determinism)
-npm run test:js   # backend payment-state machine + leaderboard anti-cheat
+npm test            # runs both suites
+npm run test:core   # 70 native C++ assertions (RNG, saves, collisions, scoring, determinism, spawn solvability)
+npm run test:js     # 62 tests: backend payment state, classic + Node Challenge anti-cheat, replay, rewards
+npm run test:challenge  # just the Node Challenge suites
+npm run typecheck   # tsc --noEmit over web/src
 ```
 
 ### Standalone playable preview (optional)
@@ -143,6 +154,45 @@ runs `npm run build`, `npm run build:dist`, and both test suites.
 Collect **π** to build combo → multiplier (up to **x6**). Power-ups: 🛡 shield ·
 🧲 magnet · » boost (2× points) · ◷ slow-mo. Missions refresh daily; the **Daily
 Run** uses a shared seed so everyone plays the same layout.
+
+## Node Challenge (SoloHost)
+
+The **NODE CHALLENGE** button on the menu starts a run whose score your own
+SoloHost node verifies by re-simulating it. See
+[`NODE_CHALLENGE.md`](./NODE_CHALLENGE.md) for the full design and threat model.
+
+```
+GET  /api/challenge/current       { challenge: { id, type, seed, startsAt, endsAt, rulesVersion } }
+POST /api/challenge/start         { run: { runId, challengeId, seed, issuedAt, expiresAt, ... } }
+POST /api/challenge/submit        { runId, challengeId, seed, simulationVersion, tapeVersion,
+                                    steps, tapeSteps[], tapeCmds[], claimed:{score,distance,coins},
+                                    accessToken? | localName? }
+                                  → { ok, verified, result?, rank?, reason? }
+GET  /api/challenge/leaderboard   ?challengeId=…&limit=…   VERIFIED runs only
+GET  /api/challenge/me            ?challengeId=…&uid=…|name=…
+GET  /api/node/status             local node dashboard data
+GET  /api/health                  liveness + version surface (Docker healthcheck)
+```
+
+Local-first: with **no `PI_API_KEY`**, the game, Node Challenge, replay
+verification, the challenge leaderboard, the node dashboard, and local
+persistence all work. Pi login / payments degrade to a friendly notice. Set
+`PI_API_KEY` to bind submissions to a verified Pi identity; add
+`NODE_CHALLENGE_DEMO=1` to still allow local identities for demos.
+
+### SoloHost quick start
+
+```bash
+git checkout solohost/pi-runner
+docker compose -f docker-compose.solohost.yml up -d --build   # localhost:3000, non-root, read-only rootfs
+curl http://127.0.0.1:3000/api/health
+```
+
+Container hardening: non-root (`node`), `read_only` rootfs + `/tmp` tmpfs,
+`cap_drop: ALL`, `no-new-privileges`, `init: true`, localhost-only port, one
+`/data` volume, `/api/health` healthcheck, graceful SIGTERM (flushes the store).
+The image ships the committed browser + WASM artifacts — **no Emscripten at
+install time**.
 
 ## Pi integration & feature flags — `web/src/config.ts`
 

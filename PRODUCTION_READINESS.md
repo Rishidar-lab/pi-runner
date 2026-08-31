@@ -35,9 +35,11 @@ client-trusted.
 | Pi adapter (auth + payments), isolated + feature-flagged | ✅ | `pi/piAdapter.ts`; nothing else touches the SDK. |
 | Backend: persistent store, payment idempotency, secrets server-side | ✅ | Atomic JSON store; `PI_API_KEY` never sent to client. |
 | Leaderboard with anti-cheat | ✅ | Server **re-simulates** the run (seed + input tape) with the same C++ core and rejects score mismatches. |
-| Build system | ✅ | `emcc` for WASM; Node's built-in TS transform for the web bundle (no external bundler dependency). |
-| Tests | ✅ | 44 native C++ assertions + 4 backend JS tests. |
-| README + env config + `.gitignore` | ✅ | Full build/run/publish instructions. |
+| Build system | ✅ | `emcc` for WASM; Node's built-in TS transform for the web bundle (no external bundler dependency); `npm run build:frontend` refreshes `public/` with no emcc. |
+| Tests | ✅ | 70 native C++ assertions + 62 JS tests (backend, Node Challenge, replay, rewards, client). `npm run typecheck` now runs in CI. |
+| README + env config + `.gitignore` | ✅ | Full build/run/publish instructions. `node_modules/` untracked. |
+| **Node Challenge (SoloHost)** | ✅ | Server-issued deterministic daily seed, run sessions, input-tape hardening, independent server-side re-simulation, VERIFIED-only leaderboard, node identity, node dashboard. See `NODE_CHALLENGE.md`. |
+| Container hardening | ✅ | Non-root, read-only rootfs, `cap_drop: ALL`, `no-new-privileges`, `init: true`, localhost-only, `/api/health` healthcheck, graceful SIGTERM. |
 
 ## 3. Tests performed
 
@@ -77,6 +79,42 @@ npm run build          # build:wasm (needs emcc) + build:web
 npm test               # 44 C++ + 4 JS
 npm start              # http://localhost:3000  — play in any browser
 ```
+
+## 4a. Node Challenge (SoloHost milestone)
+
+**Backend — part of `npm run test:js` → all passing (run twice for idempotency)**
+- `challenge-seed`: same UTC day ⇒ identical id + seed at any hour; different day
+  ⇒ different; pure HMAC (no `Math.random`); `NODE_CHALLENGE_SECRET` changes the
+  seed; `parseChallengeId` rejects traversal/junk.
+- `challenge-session`: `ISSUED` with unpredictable 128-bit `runId` + valid token;
+  unknown → null; past-deadline → `EXPIRED`; illegal transitions throw; tampered
+  token fails; survives a store reload.
+- `challenge-replay`: a genuine run verifies; inflated score / distance / coins,
+  wrong seed, dropped inputs, injected input, flipped command, inflated tick
+  count, and truncated runs are each rejected with the correct reason;
+  verification is repeatable.
+- `challenge-node-identity`: id generated once, persisted across reload, no
+  secret in `publicView`, sign/verify round-trips.
+- `challenge-api`: the full HTTP path — health, current, happy path, idempotent
+  re-submit, every rejection reason, VERIFIED-only + ranked + challenge-isolated
+  leaderboard, `/me`, `/node/status` (no path leak), malformed/oversized
+  payloads, persistence across reload.
+- `challenge-client`: the shipped transpiled `public/game/nodeChallenge.js`
+  driven end-to-end against a live server.
+
+**Performance** — `node scripts/bench-replay.mjs`: re-simulation ~30 000×
+realtime; a typical crashed run verifies in ~0.15 ms, the 30-minute hard cap
+(216 000 ticks) in ~50 ms. Linear in tick count.
+
+**Container** — `docker build` from committed artifacts (no emcc), boots
+read-only as uid 1000, goes healthy, `docker stop` in <1 s, node identity +
+leaderboard survive `docker compose restart`.
+
+**Not done / limitations** — Node Challenge is **local** authoritative
+verification on one SoloHost install. It is **not** decentralized consensus or Pi
+blockchain validation, and does **not** aggregate across nodes. Two nodes on the
+public seed namespace play the same course but keep separate leaderboards. See
+`NODE_CHALLENGE.md` §12–13.
 
 ## 5. Remaining risks / explicitly out of scope
 
