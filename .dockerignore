@@ -1,0 +1,13 @@
+.git
+.github
+node_modules
+build
+emsdk
+web
+core
+tests
+scripts
+preview.html
+*.log
+.env
+server/data
