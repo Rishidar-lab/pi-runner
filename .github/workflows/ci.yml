@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master, rebuild/cpp-wasm-endless-runner]
+    branches: [master, rebuild/cpp-wasm-endless-runner, solohost/pi-runner]
   pull_request:
 
 concurrency:
@@ -19,8 +19,19 @@ jobs:
         run: npm run test:core
         # CMake + g++ are preinstalled on ubuntu-latest; no Node deps needed.
 
+  typecheck:
+    name: TypeScript typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npm run typecheck
+
   js-tests:
-    name: backend / replay / rewards tests
+    name: backend / challenge / replay / rewards tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,14 +41,31 @@ jobs:
       - run: npm ci
       - name: Run the JS suites (first pass)
         run: npm run test:js
-      # Idempotency guard: the reward suite now wipes its isolated ledger before
-      # loading and flushes the store's debounced write before cleanup, so a
-      # second consecutive run must pass with no manual rm (OpenCode task 001).
+      # Idempotency guard: every suite isolates + wipes its own data dir, so a
+      # second consecutive run must pass with no manual cleanup.
       - name: Run the JS suites (idempotency pass)
         run: npm run test:js
 
+  frontend-build:
+    name: frontend transpile (no emcc) is in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - name: Rebuild public/ from web/src and check it matches git
+        run: |
+          npm run build:frontend
+          if ! git diff --quiet -- public; then
+            echo "::error::public/ is stale — run 'npm run build:frontend' and commit the result"
+            git diff --stat -- public
+            exit 1
+          fi
+
   wasm-build:
-    name: Emscripten build + committed-artifact check
+    name: Emscripten 6.0.8 build + reproducible-artifact gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,10 +74,11 @@ jobs:
           node-version: "22"
       - uses: mymindstorm/setup-emsdk@v14
         with:
-          # TODO(LANE 0): pin to the emsdk version that produced the committed
-          # public/ + server/pirun_core_node.js so the reproducibility check can
-          # be made fatal. Using latest until that version is identified.
-          version: latest
+          # Pinned release toolchain. Keep in sync with EXPECTED_EMCC in
+          # scripts/build-dist.mjs and scripts/build-wasm.sh. Emscripten 6.0.8
+          # produces byte-reproducible output for this project, so the committed
+          # WASM artifacts are gated below.
+          version: "6.0.8"
           actions-cache-folder: emsdk-cache
       - run: emcc --version
       - run: npm ci
@@ -58,19 +87,13 @@ jobs:
       - name: npm run build
         run: npm run build
 
-      # Regenerate the committed self-contained artifacts and check they still
-      # match what's in git. Emscripten output can drift between emsdk versions,
-      # so a diff here is reported, not fatal — until the emsdk version that
-      # produced the committed artifacts is pinned (see PI_RUNNER_BACKLOG LANE 0).
-      - name: npm run build:dist (reproducibility check — informational)
+      # HARD GATE: a fresh build:dist with the pinned toolchain must reproduce the
+      # committed self-contained artifacts byte-for-byte. A stale committed core
+      # fails CI.
+      - name: Reproducible WASM gate (build:dist must match git exactly)
         run: |
           npm run build:dist
-          if ! git diff --quiet -- public server/pirun_core_node.js; then
-            echo "::warning::committed public/ or server/pirun_core_node.js differs from a fresh build:dist (likely emsdk version drift)"
-            git diff --stat -- public server/pirun_core_node.js || true
-          else
-            echo "committed artifacts reproduce exactly"
-          fi
+          git diff --exit-code -- public server/pirun_core_node.js
 
       - name: Standalone shareable preview build
         run: |
@@ -79,3 +102,34 @@ jobs:
             -sALLOW_MEMORY_GROWTH=1 -sFILESYSTEM=0 -sSINGLE_FILE=1 -o /tmp/pirun_core_single.js
           node scripts/build-preview.mjs /tmp/pirun_core_single.js preview.html
           test -s preview.html
+
+  docker:
+    name: SoloHost image builds, boots, and answers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the SoloHost image (committed artifacts, no emcc)
+        run: docker build -t pi-runner:ci .
+      - name: Boot the container
+        run: |
+          docker run -d --name pirun --read-only --tmpfs /tmp \
+            -e NODE_CHALLENGE_DEMO=1 -p 127.0.0.1:3000:3000 pi-runner:ci
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 30); do
+            s=$(docker inspect --format '{{.State.Health.Status}}' pirun || echo none)
+            echo "health: $s"
+            [ "$s" = "healthy" ] && exit 0
+            sleep 2
+          done
+          docker logs pirun
+          exit 1
+      - name: Endpoints answer
+        run: |
+          curl -fsS http://127.0.0.1:3000/api/health | grep -q '"nodeChallenge":true'
+          curl -fsS http://127.0.0.1:3000/api/challenge/current | grep -q '"seed"'
+          curl -fsS http://127.0.0.1:3000/api/node/status | grep -q '"status":"ONLINE"'
+      - name: Runs as non-root
+        run: test "$(docker exec pirun id -u)" = "1000"
+      - name: Graceful stop
+        run: docker stop -t 10 pirun

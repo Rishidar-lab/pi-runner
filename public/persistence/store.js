@@ -28,6 +28,9 @@ const DEFAULT_META = {
     daily: {
         day: '',
         best: 0
+    },
+    player: {
+        localName: ''
     }
 };
 export class Store {

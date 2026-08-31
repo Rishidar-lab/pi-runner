@@ -139,3 +139,91 @@ body {
 .foot { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px; font-size: 11px; color: var(--muted); }
 .foot .dot { opacity: .5; }
 .hidden { display: none !important; }
+
+/* =====================  Node Challenge  ===================== */
+.link { color: var(--cyan); text-decoration: none; border-bottom: 1px dotted rgba(62,240,216,.5); cursor: pointer; }
+
+/* feature button on the menu */
+.btn-node {
+  width: 100%; margin-top: 10px; padding: 12px 14px; cursor: pointer;
+  display: flex; align-items: center; gap: 12px; text-align: left;
+  border-radius: 12px; border: 1px solid rgba(62,240,216,.45);
+  background: linear-gradient(135deg, rgba(62,240,216,.14), rgba(140,110,255,.14));
+  color: var(--text);
+}
+.btn-node:active { transform: translateY(1px); }
+.btn-node-mark { font-size: 20px; color: var(--cyan); text-shadow: 0 0 12px rgba(62,240,216,.6); }
+.btn-node-text { display: flex; flex-direction: column; gap: 2px; }
+.btn-node-text b { font-family: Orbitron; font-size: 14px; letter-spacing: 1px; }
+.btn-node-text small { font-size: 11px; color: var(--muted); }
+
+/* in-run badge */
+.nc-badge {
+  position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 7;
+  display: flex; align-items: center; gap: 7px;
+  font-family: Orbitron; font-size: 11px; letter-spacing: 2px; color: var(--cyan);
+  background: rgba(10,6,24,.82); border: 1px solid rgba(62,240,216,.4);
+  padding: 6px 12px; border-radius: 999px;
+}
+.nc-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); animation: rpulse 1.4s infinite; }
+
+/* spinner (no gimmicks — a clean ring) */
+.nc-spinner { width: 40px; height: 40px; margin: 8px auto 0; border-radius: 50%;
+  border: 3px solid rgba(255,255,255,.12); border-top-color: var(--cyan); animation: ncspin .9s linear infinite; }
+@keyframes ncspin { to { transform: rotate(360deg); } }
+.nc-verify { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 10px 0; }
+
+/* pre-play meta */
+.nc-meta { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; margin: 10px 0; }
+.nc-meta div { display: flex; flex-direction: column; }
+.nc-meta span { font-family: Orbitron; font-weight: 700; font-size: 16px; }
+.nc-meta small { color: var(--muted); font-size: 9px; letter-spacing: 1.5px; }
+.nc-seed { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 4px 0 12px;
+  font-size: 12px; color: var(--muted); }
+.nc-seed code { font-family: ui-monospace, Menlo, monospace; color: var(--text); background: rgba(255,255,255,.06);
+  border: 1px solid var(--stroke); border-radius: 6px; padding: 3px 8px; letter-spacing: 1px; }
+.nc-seed-k { font-family: Orbitron; letter-spacing: 2px; }
+.nc-seed-tag { font-size: 10px; color: var(--cyan); border: 1px solid rgba(62,240,216,.4); border-radius: 999px; padding: 2px 7px; }
+.nc-name { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 4px 0 6px; font-size: 13px; color: var(--muted); }
+.nc-name input { flex: 1; max-width: 180px; background: rgba(255,255,255,.06); border: 1px solid var(--stroke);
+  border-radius: 8px; color: var(--text); padding: 8px 10px; font-family: Chivo, sans-serif; font-size: 13px; }
+
+.nc-board-head, .nc-mini-board + .btn-row { margin-top: 12px; }
+.nc-board-head { font-family: Orbitron; font-size: 10px; letter-spacing: 2px; color: var(--violet); margin: 14px 0 6px; }
+.nc-mini-board { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.nc-mini-board li { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 8px;
+  font-size: 13px; padding: 5px 8px; background: rgba(255,255,255,.04); border-radius: 8px; }
+.nc-mini-board li span { color: var(--muted); font-family: Orbitron; font-size: 11px; }
+.nc-mini-board li em { font-style: normal; font-family: Orbitron; color: var(--gold); }
+
+/* verified / rejected */
+.panel-eyebrow.ok { color: var(--cyan); }
+.panel-eyebrow.bad { color: var(--danger); }
+.nc-seal {
+  display: inline-flex; align-items: center; gap: 8px; margin: 8px auto 12px;
+  font-family: Orbitron; font-weight: 700; font-size: 12px; letter-spacing: 1.5px;
+  color: #04201d; background: linear-gradient(135deg, var(--cyan), #2bd6c0);
+  padding: 8px 14px; border-radius: 999px; box-shadow: 0 8px 22px rgba(62,240,216,.35);
+}
+.nc-seal span { display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%;
+  background: rgba(4,32,29,.25); font-size: 11px; }
+
+/* node dashboard */
+.nc-status { display: inline-flex; align-items: center; gap: 8px; font-family: Orbitron; font-size: 12px;
+  letter-spacing: 2px; color: var(--cyan); margin-bottom: 12px; }
+.nc-kv { display: flex; flex-direction: column; gap: 1px; text-align: left; margin-bottom: 14px;
+  border: 1px solid var(--stroke); border-radius: 12px; overflow: hidden; }
+.nc-kv > div { display: flex; justify-content: space-between; gap: 10px; padding: 9px 12px; font-size: 13px; background: rgba(255,255,255,.03); }
+.nc-kv dt { color: var(--muted); }
+.nc-kv dd { color: var(--text); font-weight: 700; }
+.nc-kv code { font-family: ui-monospace, Menlo, monospace; }
+
+/* full leaderboard */
+.nc-board { display: flex; flex-direction: column; gap: 4px; margin: 8px 0 14px; max-height: 46vh; overflow-y: auto; }
+.nc-row { display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 10px;
+  padding: 9px 10px; background: rgba(255,255,255,.04); border: 1px solid transparent; border-radius: 10px; font-size: 14px; }
+.nc-row.me { border-color: var(--cyan); background: rgba(62,240,216,.08); }
+.nc-rank { font-family: Orbitron; color: var(--muted); font-size: 12px; text-align: center; }
+.nc-user { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nc-pi { font-style: normal; color: var(--gold); font-size: 11px; }
+.nc-score { font-family: Orbitron; font-weight: 700; color: var(--gold); }
