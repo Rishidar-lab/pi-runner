@@ -1,0 +1,25 @@
+services:
+  pi-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: "3000"
+      DATA_DIR: /data
+      PI_API_KEY: ${PI_API_KEY:-}
+      PI_ADS_ENABLED: ${PI_ADS_ENABLED:-0}
+      REWARDS_ENABLED: ${REWARDS_ENABLED:-0}
+      REWARD_PI_PER_TOKEN: ${REWARD_PI_PER_TOKEN:-0.001}
+      REWARD_DAILY_CAP_PI: ${REWARD_DAILY_CAP_PI:-0.25}
+      REWARD_MIN_CLAIM_PI: ${REWARD_MIN_CLAIM_PI:-0.05}
+      PI_WALLET_PASSPHRASE: ${PI_WALLET_PASSPHRASE:-}
+    ports:
+      - "127.0.0.1:${PIRUN_PORT:-3000}:3000"
+    volumes:
+      - pi_runner_data:/data
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  pi_runner_data:
