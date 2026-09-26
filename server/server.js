@@ -151,16 +151,32 @@ app.post('/api/score', async (req, res) => {
     const day = body.daily ? currentDay() : null;
     store.addScore({
       name, uid: body.uid || null, score: Number(body.score), coins: Number(body.coins) || 0,
-      distance: Number(body.distance) || 0, daily: Boolean(body.daily), day, verified: true, ts: Date.now(),
+      distance: Number(body.distance) || 0, daily: Boolean(body.daily), day, verified: true,
+      season: store.seasonKey(), ts: Date.now(),
     });
-    return res.json({ ok: true, verified: true });
+    return res.json({ ok: true, verified: true, season: store.seasonKey() });
   } catch (e) { log.error('server.error', { route: '/api/score', message: e.message }); return res.status(500).json({ ok: false, error: 'Server error validating score' }); }
 });
 
 app.get('/api/leaderboard', (req, res) => {
   const n = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
   const daily = req.query.daily === '1';
-  res.json({ ok: true, scores: store.topScores(n, daily, currentDay()) });
+  // Seasons are explicit UTC quarters. "season=current" (or omitted) is the
+  // live quarter; a specific "YYYY-Qn" queries that closed season.
+  let season = store.seasonKey();
+  if (typeof req.query.season === 'string' && req.query.season !== 'current') {
+    if (!/^\d{4}-Q[1-4]$/.test(req.query.season)) {
+      return res.status(400).json({ ok: false, error: 'Invalid season — expected YYYY-Qn (UTC quarter).' });
+    }
+    season = req.query.season;
+  }
+  const scores = store.topScores(n, daily, currentDay(), season);
+  res.json({
+    ok: true,
+    season: { id: season, endsAt: store.seasonEndsAt(season), current: season === store.seasonKey() },
+    count: scores.length,
+    scores,
+  });
 });
 
 // ---- play-to-earn ---------------------------------------------------------

@@ -47,7 +47,10 @@ async function walk(dir) {
 const EXPECTED_EMCC = '6.0.8';
 
 const COMMON = ['-std=c++17', '-O3', '-flto', '--bind',
-  '-sALLOW_MEMORY_GROWTH=1', '-sFILESYSTEM=0', '-sASSERTIONS=0', '-sSINGLE_FILE=1'];
+  '-sALLOW_MEMORY_GROWTH=1', '-sFILESYSTEM=0', '-sASSERTIONS=0', '-sSINGLE_FILE=1',
+  // No eval/new Function in the generated core — the strict CSP (no
+  // 'unsafe-eval') stays intact.
+  '-sDYNAMIC_EXECUTION=0'];
 const SOURCES = [join(ROOT, 'core/src/sim.cpp'), join(ROOT, 'core/bindings/wasm.cpp')];
 const INC = join(ROOT, 'core/include');
 

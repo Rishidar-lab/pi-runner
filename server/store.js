@@ -151,10 +151,27 @@ function daysAgoKey(n) {
   return dayKey(d);
 }
 
+/** Explicit season id: UTC quarter, e.g. "2026-Q4". Seasons are the leaderboard's
+ * explicit time boundaries — no hidden rolling windows. */
+function seasonKey(d = new Date()) {
+  return `${d.getUTCFullYear()}-Q${Math.floor(d.getUTCMonth() / 3) + 1}`;
+}
+
+/** UTC instant the given season ends (first ms of the next quarter). */
+function seasonEndsAt(seasonId) {
+  const m = /^(\d{4})-Q([1-4])$/.exec(seasonId || '');
+  if (!m) return null;
+  const year = Number(m[1]);
+  const q = Number(m[2]);
+  return new Date(Date.UTC(year, q * 3, 1)).toISOString();
+}
+
 module.exports = {
   SCHEMA_VERSION,
   flushSync,
   dayKey,
+  seasonKey,
+  seasonEndsAt,
 
   // ---- existing surface (unchanged behaviour) --------------------------
   hasUnlock: (uid) => Boolean(uid && cache.unlocks[uid]),
@@ -173,9 +190,10 @@ module.exports = {
     if (cache.scores.length > MAX_SCORES) cache.scores.length = MAX_SCORES;
     persist();
   },
-  topScores: (n = 20, dailyOnly = false, day = null) =>
+  topScores: (n = 20, dailyOnly = false, day = null, season = null) =>
     cache.scores
       .filter((s) => (dailyOnly ? s.daily && s.day === day : true))
+      .filter((s) => (season ? (s.season || seasonKey()) === season : true))
       .slice(0, n)
       .map(({ name, score, coins, distance, ts }) => ({ name, score, coins, distance, ts })),
 

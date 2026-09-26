@@ -22,7 +22,9 @@ if [ "$EMCC_VER" != "$EXPECTED_EMCC" ]; then
   echo "Install it: emsdk install $EXPECTED_EMCC && emsdk activate $EXPECTED_EMCC" >&2
   exit 1
 fi
-COMMON=(-std=c++17 -O3 -flto --bind -s ALLOW_MEMORY_GROWTH=1 -s FILESYSTEM=0 -s ASSERTIONS=0)
+# DYNAMIC_EXECUTION=0 keeps the generated core free of eval/new Function, so
+# the app runs under the server's strict CSP (no 'unsafe-eval' anywhere).
+COMMON=(-std=c++17 -O3 -flto --bind -s ALLOW_MEMORY_GROWTH=1 -s FILESYSTEM=0 -s ASSERTIONS=0 -s DYNAMIC_EXECUTION=0)
 
 WEB_OUT="$ROOT/web/src/core"; mkdir -p "$WEB_OUT"
 em++ "${SRC[@]}" -I "$INC" "${COMMON[@]}" \

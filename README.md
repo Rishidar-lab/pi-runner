@@ -1,9 +1,14 @@
-# Pi Runner 🏃‍♂️π
+# Kurinji Run 🏃‍♂️π
 
 A polished 2D **Pi-themed endless runner** for the Pi ecosystem. Dash through a
 neon Pi grid, switch lanes, **jump** hurdles, **slide** under bars, bank **π**,
 chain combos, grab power-ups, complete missions, and climb a **cheat-resistant
 leaderboard**.
+
+> **Name:** "Kurinji Run" (குறிஞ்சி — the hills of Tamil literature) is the
+> original product name. "Pi Runner" was only a working codename: the name is
+> taken by unrelated products, and Pi trademark rules restrict "Pi" in app
+> names (see `docs/COMPETITORS.md` + `docs/LISTING.md`). Repo path unchanged.
 
 > **Architecture at a glance — a hybrid build.** The game's deterministic
 > simulation "model" (player state, movement, obstacles, collectibles, scoring,
@@ -232,6 +237,11 @@ app review) are in [`PRIVACY.md`](./PRIVACY.md) and [`TERMS.md`](./TERMS.md).
 
 - **Payments are cosmetic only and never pay-to-win** — the single optional 1 π
   unlock grants the *Gold Orb* skin + one shield per run. The game is 100% free.
+- **Tamil + English UI** — full i18n (`web/src/i18n.ts`), persisted, toggle in Settings.
+- **Seasonal leaderboards** — explicit UTC-quarter seasons; verified runs only;
+  `GET /api/leaderboard?season=YYYY-Qn`.
+- **Strict CSP, no eval anywhere** — the WASM core is built with
+  `-sDYNAMIC_EXECUTION=0`, so the game runs with **no `unsafe-eval`** in CSP.
 - **Payments stay behind `PI_PAYMENTS_ENABLED` until** the full auth → server
   approve → complete → cancel/error flow is verified in the Pi sandbox.
 - **No ads.** **No client-trusted money or scores.** The `PI_API_KEY` lives only
@@ -239,8 +249,10 @@ app review) are in [`PRIVACY.md`](./PRIVACY.md) and [`TERMS.md`](./TERMS.md).
 
 ### Publishing to the Pi ecosystem (you do these — they need your Pi account)
 
-1. In the **Pi Browser**, open `pi://develop.pinet.com`, register the app, set
-   its URL to your deployed URL, and enable **Sandbox**.
+**Full listing-ready checklist → [`docs/LISTING.md`](./docs/LISTING.md).** Summary:
+
+1. In the **Pi Browser**, open `pi://develop.pinet.com`, register Testnet +
+   Mainnet apps (App Network is immutable), set the app URL, enable **Sandbox**.
 2. Copy the app's **API key** → set it as the `PI_API_KEY` env var on your host
    (see `.env.example`). Replace `web/validation-key.txt` with the portal's
    domain-validation key; it is served at the site root by the build.
@@ -252,4 +264,7 @@ app review) are in [`PRIVACY.md`](./PRIVACY.md) and [`TERMS.md`](./TERMS.md).
    `PI_SANDBOX: false`.
 
 See **PRODUCTION_READINESS.md** for the full status report, test evidence, and
-remaining risks.
+remaining risks. Research: `docs/SOURCES.md` · Balance: `docs/BALANCE_ACTIONS.md` ·
+Earning: `docs/EARNING_ROUTES.md` · Growth: `docs/GROWTH.md` · Security:
+`docs/SECURITY_FINDINGS.md` · Node: `docs/NODE_FEASIBILITY.md` · Economics:
+`docs/ECONOMICS.md`.

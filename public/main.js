@@ -10,6 +10,7 @@ import { evaluate as evalAchievements } from './game/achievements.js';
 import { ensureDailyMissions, applyRunToMissions, dailySeed } from './game/missions.js';
 import { NodeChallengeClient } from './game/nodeChallenge.js';
 import { FLAGS } from './config.js';
+import { t, toggleLang } from './i18n.js';
 const FIXED_DT = 1 / 120;
 class Game {
     core;
@@ -157,7 +158,7 @@ class Game {
         try {
             ticket = await this.nc.start();
         } catch  {
-            this.ui.toast('Could not reach your Pi Runner Node. Try again.');
+            this.ui.toast(t('toast.nodeUnreachable'));
             return;
         }
         this.challengeTicket = ticket;
@@ -192,7 +193,7 @@ class Game {
         if (this.store.meta.settings.music) this.audio.startMusic();
     }
     async openNodeChallenge() {
-        this.ui.showLoading('Contacting your Pi Runner Node…');
+        this.ui.showLoading(t('nc.title') + '…');
         try {
             const [challenge, board, status] = await Promise.all([
                 this.nc.current(),
@@ -211,7 +212,23 @@ class Game {
                 localName: this.store.meta.player.localName
             });
         } catch  {
-            this.ui.toast('Node Challenge is unavailable right now.');
+            this.ui.toast(t('toast.nodeUnavailable'));
+            this.ui.showMenu(this.store.best, this.store.totalCoins);
+        }
+    }
+    async openSeason() {
+        this.ui.showLoading(t('season.title') + '…');
+        try {
+            const res = await fetch('/api/leaderboard?season=current&limit=20').then((x)=>x.json());
+            if (!res?.ok) throw new Error(res?.error || 'bad response');
+            this.ui.showSeason({
+                id: res.season.id,
+                endsAt: res.season.endsAt,
+                entries: res.scores ?? [],
+                count: res.count ?? (res.scores ?? []).length
+            });
+        } catch  {
+            this.ui.toast(t('toast.boardFail'));
             this.ui.showMenu(this.store.best, this.store.totalCoins);
         }
     }
@@ -252,21 +269,21 @@ class Game {
         this.ui.showChallengeResult(res, ticket.challengeId, this.identityName());
     }
     async openNodeDashboard() {
-        this.ui.showLoading('Reading node status…');
+        this.ui.showLoading(t('node.title') + '…');
         try {
             this.ui.showNodeDashboard(await this.nc.nodeStatus());
         } catch  {
-            this.ui.toast('Could not read node status.');
+            this.ui.toast(t('toast.nodeStatusFail'));
             this.ui.showMenu(this.store.best, this.store.totalCoins);
         }
     }
     async openChallengeLeaderboard() {
-        this.ui.showLoading('Loading verified runs…');
+        this.ui.showLoading(t('nc.leaderboard') + '…');
         try {
             const board = await this.nc.leaderboard();
             this.ui.showChallengeLeaderboard(board, this.identityName());
         } catch  {
-            this.ui.toast('Could not load the leaderboard.');
+            this.ui.toast(t('toast.boardFail'));
         }
     }
     doPause() {
@@ -333,7 +350,9 @@ class Game {
         this.store.flushMeta();
         this.checkSkinUnlocks();
         if (this.challengeTicket) {
-            for (const a of newly)this.ui.toast(`Achievement: ${a.name} ★`);
+            for (const a of newly)this.ui.toast(t('toast.achievement', {
+                name: a.name
+            }));
             void this.submitChallengeRun(result);
             return;
         }
@@ -349,8 +368,12 @@ class Game {
             canRevive: this.pi.available && !this.revivedThisRun,
             canClaim: Boolean(this.pi.user)
         });
-        for (const a of newly)this.ui.toast(`Achievement: ${a.name} ★`);
-        for (const m of doneMissions)this.ui.toast(`Mission complete: ${m} ✓`);
+        for (const a of newly)this.ui.toast(t('toast.achievement', {
+            name: a.name
+        }));
+        for (const m of doneMissions)this.ui.toast(t('toast.missionComplete', {
+            name: m
+        }));
     }
     checkSkinUnlocks() {
         const totals = {
@@ -362,7 +385,9 @@ class Game {
             if (sk.index <= 1) continue;
             if (!this.store.isSkinUnlocked(sk.index) && sk.unlocked(totals, this.store.goldUnlock)) {
                 this.store.unlockSkin(sk.index);
-                this.ui.toast(`Skin unlocked: ${sk.name}!`);
+                this.ui.toast(t('toast.skinUnlocked', {
+                    name: sk.name
+                }));
             }
         }
     }
@@ -535,6 +560,13 @@ class Game {
                 ensureDailyMissions(this.store.meta);
                 this.ui.showMissions(this.store.meta, this.store.achievementsMask);
             },
+            onOpenSeason: ()=>void this.openSeason(),
+            onToggleLanguage: ()=>{
+                toggleLang();
+                if (this.ui.current === 'settings') this.ui.showSettings(this.store.meta, this.settingsBack);
+                else if (this.ui.current === 'menu') this.ui.showMenu(this.store.best, this.store.totalCoins);
+                else if (this.ui.current === 'season') void this.openSeason();
+            },
             onBack: ()=>{
                 this.settingsBack = 'menu';
                 this.ui.showMenu(this.store.best, this.store.totalCoins);
@@ -600,7 +632,7 @@ class Game {
             granted = false;
         }
         if (!granted) {
-            this.ui.toast('Ad reward could not be verified.');
+            this.ui.toast(t('toast.adNotVerified'));
             return;
         }
         this.revivedThisRun = true;
@@ -619,11 +651,11 @@ class Game {
         };
         this.acc = 0;
         this.last = performance.now();
-        this.ui.toast('Revived! Shield active 🛡');
+        this.ui.toast(t('toast.revived'));
     }
     async claimReward() {
         if (!this.pi.user) {
-            this.ui.toast('Sign in with Pi to claim rewards.');
+            this.ui.toast(t('toast.signInForRewards'));
             return;
         }
         if (!this.lastRun || !this.lastResult) return;
@@ -647,36 +679,43 @@ class Game {
                     distance: this.lastResult.distance
                 })
             }).then((x)=>x.json());
-            if (res?.ok) this.ui.toast(res.paid ? `Earned ${res.amountPi} π! ✦` : `Reward recorded: ${res.amountPi} π`);
+            if (res?.ok) this.ui.toast(res.paid ? t('toast.earnedPi', {
+                amount: res.amountPi
+            }) : t('toast.rewardRecorded', {
+                amount: res.amountPi
+            }));
             else this.ui.toast(this.rewardReason(res?.reason));
         } catch  {
-            this.ui.toast('Could not reach the rewards server.');
+            this.ui.toast(t('toast.rewardsFail'));
         }
     }
     rewardReason(reason) {
         switch(reason){
             case 'below_minimum':
-                return 'Not enough π yet — play a bit more to reach the minimum.';
+                return t('reward.belowMinimum');
             case 'daily_cap_reached':
-                return "You've hit today's reward cap. Come back tomorrow!";
+                return t('reward.dailyCap');
             case 'already_claimed':
-                return 'This run was already claimed.';
+                return t('reward.alreadyClaimed');
             case 'unverified_run':
-                return 'Run could not be verified.';
+                return t('reward.unverified');
             case 'rewards_disabled':
-                return 'Rewards are not live yet.';
+                return t('reward.disabled');
             default:
-                return 'Reward could not be processed.';
+                return t('reward.generic');
         }
     }
     async share() {
         const url = location.href.split('#')[0];
         const score = this.lastResult?.score ?? this.store.best;
-        const text = `I scored ${score} in Pi Runner — think you can beat me? 🏃‍♂️π`;
+        const text = t('share.text', {
+            score,
+            app: t('app.title')
+        });
         try {
             if (navigator.share) {
                 await navigator.share({
-                    title: 'Pi Runner',
+                    title: t('app.title'),
                     text,
                     url
                 });
@@ -685,7 +724,7 @@ class Game {
         } catch  {}
         try {
             await navigator.clipboard.writeText(url);
-            this.ui.toast('Link copied — share it!');
+            this.ui.toast(t('toast.linkCopied'));
         } catch  {
             this.ui.toast(url);
         }
@@ -694,10 +733,12 @@ class Game {
         const r = await this.pi.login();
         if (r.ok) {
             this.ui.setLoginState(r.value.username, true);
-            this.ui.toast(`Signed in as ${r.value.username}`);
+            this.ui.toast(t('toast.signedInAs', {
+                name: r.value.username
+            }));
             if (await this.pi.ownsGoldUnlock()) {
                 this.store.setGoldUnlock(true);
-                this.ui.toast('Gold Orb + Shield restored ✓');
+                this.ui.toast(t('toast.goldRestored'));
             }
         } else {
             this.ui.toast(r.message);
@@ -709,7 +750,7 @@ class Game {
             this.store.setGoldUnlock(true);
             this.renderer.setSkin(1);
             this.store.selectSkin(1);
-            this.ui.toast('Unlocked! Gold Orb + Shield ✦');
+            this.ui.toast(t('toast.unlocked'));
         } else this.ui.toast(r.message);
     }
 }

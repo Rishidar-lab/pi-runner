@@ -19,6 +19,7 @@ import { evaluate as evalAchievements, type RunResult } from './game/achievement
 import { ensureDailyMissions, applyRunToMissions, dailySeed } from './game/missions.js';
 import { NodeChallengeClient, type RunTicket } from './game/nodeChallenge.js';
 import { FLAGS } from './config.js';
+import { t, toggleLang } from './i18n.js';
 
 const FIXED_DT = 1 / 120; // must match cfg::FIXED_DT
 
@@ -160,7 +161,7 @@ class Game {
     try {
       ticket = await this.nc.start();
     } catch {
-      this.ui.toast('Could not reach your Pi Runner Node. Try again.');
+      this.ui.toast(t('toast.nodeUnreachable'));
       return;
     }
     this.challengeTicket = ticket;
@@ -183,7 +184,7 @@ class Game {
 
   /** Open the Node Challenge screen (fetches the live challenge + best/leaderboard). */
   private async openNodeChallenge(): Promise<void> {
-    this.ui.showLoading('Contacting your Pi Runner Node…');
+    this.ui.showLoading(t('nc.title') + '…');
     try {
       const [challenge, board, status] = await Promise.all([
         this.nc.current(),
@@ -202,7 +203,25 @@ class Game {
         localName: this.store.meta.player.localName,
       });
     } catch {
-      this.ui.toast('Node Challenge is unavailable right now.');
+      this.ui.toast(t('toast.nodeUnavailable'));
+      this.ui.showMenu(this.store.best, this.store.totalCoins);
+    }
+  }
+
+  /** Open the seasonal leaderboard (explicit UTC quarter, verified runs only). */
+  private async openSeason(): Promise<void> {
+    this.ui.showLoading(t('season.title') + '…');
+    try {
+      const res = await fetch('/api/leaderboard?season=current&limit=20').then((x) => x.json());
+      if (!res?.ok) throw new Error(res?.error || 'bad response');
+      this.ui.showSeason({
+        id: res.season.id,
+        endsAt: res.season.endsAt,
+        entries: res.scores ?? [],
+        count: res.count ?? (res.scores ?? []).length,
+      });
+    } catch {
+      this.ui.toast(t('toast.boardFail'));
       this.ui.showMenu(this.store.best, this.store.totalCoins);
     }
   }
@@ -238,22 +257,22 @@ class Game {
   }
 
   private async openNodeDashboard(): Promise<void> {
-    this.ui.showLoading('Reading node status…');
+    this.ui.showLoading(t('node.title') + '…');
     try {
       this.ui.showNodeDashboard(await this.nc.nodeStatus());
     } catch {
-      this.ui.toast('Could not read node status.');
+      this.ui.toast(t('toast.nodeStatusFail'));
       this.ui.showMenu(this.store.best, this.store.totalCoins);
     }
   }
 
   private async openChallengeLeaderboard(): Promise<void> {
-    this.ui.showLoading('Loading verified runs…');
+    this.ui.showLoading(t('nc.leaderboard') + '…');
     try {
       const board = await this.nc.leaderboard();
       this.ui.showChallengeLeaderboard(board, this.identityName());
     } catch {
-      this.ui.toast('Could not load the leaderboard.');
+      this.ui.toast(t('toast.boardFail'));
     }
   }
 
@@ -301,7 +320,7 @@ class Game {
     // Node Challenge: hand the run to the node for authoritative verification
     // instead of the classic client-reported game-over flow.
     if (this.challengeTicket) {
-      for (const a of newly) this.ui.toast(`Achievement: ${a.name} ★`);
+      for (const a of newly) this.ui.toast(t('toast.achievement', { name: a.name }));
       void this.submitChallengeRun(result);
       return;
     }
@@ -318,8 +337,8 @@ class Game {
       },
     );
 
-    for (const a of newly) this.ui.toast(`Achievement: ${a.name} ★`);
-    for (const m of doneMissions) this.ui.toast(`Mission complete: ${m} ✓`);
+    for (const a of newly) this.ui.toast(t('toast.achievement', { name: a.name }));
+    for (const m of doneMissions) this.ui.toast(t('toast.missionComplete', { name: m }));
   }
 
   private checkSkinUnlocks(): void {
@@ -328,7 +347,7 @@ class Game {
       if (sk.index <= 1) continue; // 0 default, 1 gold (via payment)
       if (!this.store.isSkinUnlocked(sk.index) && sk.unlocked(totals, this.store.goldUnlock)) {
         this.store.unlockSkin(sk.index);
-        this.ui.toast(`Skin unlocked: ${sk.name}!`);
+        this.ui.toast(t('toast.skinUnlocked', { name: sk.name }));
       }
     }
   }
@@ -458,6 +477,14 @@ class Game {
       onOpenSettings: () => this.ui.showSettings(this.store.meta, this.settingsBack),
       onOpenSkins: () => this.ui.showSkins(this.store.view.skinsUnlocked, this.store.selectedSkin, this.store.goldUnlock),
       onOpenMissions: () => { ensureDailyMissions(this.store.meta); this.ui.showMissions(this.store.meta, this.store.achievementsMask); },
+      onOpenSeason: () => void this.openSeason(),
+      onToggleLanguage: () => {
+        toggleLang();
+        // Re-render the current screen so the new language takes effect immediately.
+        if (this.ui.current === 'settings') this.ui.showSettings(this.store.meta, this.settingsBack);
+        else if (this.ui.current === 'menu') this.ui.showMenu(this.store.best, this.store.totalCoins);
+        else if (this.ui.current === 'season') void this.openSeason();
+      },
       onBack: () => { this.settingsBack = 'menu'; this.ui.showMenu(this.store.best, this.store.totalCoins); },
       onSelectSkin: (i: number) => {
         this.store.selectSkin(i); this.renderer.setSkin(i); this.audio.ui();
@@ -492,7 +519,7 @@ class Game {
       }).then((x) => x.json());
       granted = Boolean(r?.ok);
     } catch { granted = false; }
-    if (!granted) { this.ui.toast('Ad reward could not be verified.'); return; }
+    if (!granted) { this.ui.toast(t('toast.adNotVerified')); return; }
 
     this.revivedThisRun = true;
     this.core.revive();
@@ -501,12 +528,12 @@ class Game {
     if (this.store.meta.settings.music) this.audio.startMusic();
     this.prev = { coins: this.core.coins(), shield: this.core.hasShield(), magnet: 0, boost: 0, slowmo: 0, gems: this.core.gems(), state: St.Playing };
     this.acc = 0; this.last = performance.now();
-    this.ui.toast('Revived! Shield active 🛡');
+    this.ui.toast(t('toast.revived'));
   }
 
   /** Play-to-earn: claim real π for the last verified run (server-capped). */
   private async claimReward(): Promise<void> {
-    if (!this.pi.user) { this.ui.toast('Sign in with Pi to claim rewards.'); return; }
+    if (!this.pi.user) { this.ui.toast(t('toast.signInForRewards')); return; }
     if (!this.lastRun || !this.lastResult) return;
     const r = this.lastRun;
     try {
@@ -518,19 +545,19 @@ class Game {
           score: this.lastResult.score, coins: this.lastResult.coins, distance: this.lastResult.distance,
         }),
       }).then((x) => x.json());
-      if (res?.ok) this.ui.toast(res.paid ? `Earned ${res.amountPi} π! ✦` : `Reward recorded: ${res.amountPi} π`);
+      if (res?.ok) this.ui.toast(res.paid ? t('toast.earnedPi', { amount: res.amountPi }) : t('toast.rewardRecorded', { amount: res.amountPi }));
       else this.ui.toast(this.rewardReason(res?.reason));
-    } catch { this.ui.toast('Could not reach the rewards server.'); }
+    } catch { this.ui.toast(t('toast.rewardsFail')); }
   }
 
   private rewardReason(reason?: string): string {
     switch (reason) {
-      case 'below_minimum': return 'Not enough π yet — play a bit more to reach the minimum.';
-      case 'daily_cap_reached': return "You've hit today's reward cap. Come back tomorrow!";
-      case 'already_claimed': return 'This run was already claimed.';
-      case 'unverified_run': return 'Run could not be verified.';
-      case 'rewards_disabled': return 'Rewards are not live yet.';
-      default: return 'Reward could not be processed.';
+      case 'below_minimum': return t('reward.belowMinimum');
+      case 'daily_cap_reached': return t('reward.dailyCap');
+      case 'already_claimed': return t('reward.alreadyClaimed');
+      case 'unverified_run': return t('reward.unverified');
+      case 'rewards_disabled': return t('reward.disabled');
+      default: return t('reward.generic');
     }
   }
 
@@ -538,11 +565,11 @@ class Game {
   private async share(): Promise<void> {
     const url = location.href.split('#')[0];
     const score = this.lastResult?.score ?? this.store.best;
-    const text = `I scored ${score} in Pi Runner — think you can beat me? 🏃‍♂️π`;
+    const text = t('share.text', { score, app: t('app.title') });
     try {
-      if (navigator.share) { await navigator.share({ title: 'Pi Runner', text, url }); return; }
+      if (navigator.share) { await navigator.share({ title: t('app.title'), text, url }); return; }
     } catch { /* user cancelled share sheet */ }
-    try { await navigator.clipboard.writeText(url); this.ui.toast('Link copied — share it!'); }
+    try { await navigator.clipboard.writeText(url); this.ui.toast(t('toast.linkCopied')); }
     catch { this.ui.toast(url); }
   }
 
@@ -550,8 +577,8 @@ class Game {
     const r = await this.pi.login();
     if (r.ok) {
       this.ui.setLoginState(r.value.username, true);
-      this.ui.toast(`Signed in as ${r.value.username}`);
-      if (await this.pi.ownsGoldUnlock()) { this.store.setGoldUnlock(true); this.ui.toast('Gold Orb + Shield restored ✓'); }
+      this.ui.toast(t('toast.signedInAs', { name: r.value.username }));
+      if (await this.pi.ownsGoldUnlock()) { this.store.setGoldUnlock(true); this.ui.toast(t('toast.goldRestored')); }
     } else {
       this.ui.toast(r.message);
     }
@@ -559,7 +586,7 @@ class Game {
 
   private async buyUnlock(): Promise<void> {
     const r = await this.pi.buyGoldUnlock();
-    if (r.ok) { this.store.setGoldUnlock(true); this.renderer.setSkin(1); this.store.selectSkin(1); this.ui.toast('Unlocked! Gold Orb + Shield ✦'); }
+    if (r.ok) { this.store.setGoldUnlock(true); this.renderer.setSkin(1); this.store.selectSkin(1); this.ui.toast(t('toast.unlocked')); }
     else this.ui.toast(r.message);
   }
 }
