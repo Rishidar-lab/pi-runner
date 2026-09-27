@@ -1,0 +1,34 @@
+{
+  "product": "Kurinji Run (pi-runner)",
+  "version": "2.1.0",
+  "capturedAt": "2026-09-27T00:59:31Z",
+  "host": "Rishidar",
+  "git": {
+    "branch": "solohost/pi-runner",
+    "headSha": "9952549b9d44c5cee3c765164a76b243b88a99ea",
+    "headShort": "9952549"
+  },
+  "tests": {
+    "jsPass": 99,
+    "jsFail": 0,
+    "typecheck": "pass",
+    "frontendSync": "in-sync",
+    "nativeCpp": "not-run-here (needs cmake; unchanged since bf3eeac; CI runs it)",
+    "paymentRouteAdversarialTests": 30
+  },
+  "network": "testnet",
+  "paymentFlags": {
+    "server_PI_PAYMENTS_ENABLED_default": false,
+    "server_PI_ALLOW_MAINNET_default": false,
+    "client_FLAGS_PI_PAYMENTS_ENABLED": false
+  },
+  "mainnet": "disabled",
+  "walletCompanion": "watch-only",
+  "releaseState": "LOCAL-RC",
+  "knownLimitations": [
+    "Pi Testnet A-H not yet verified in real Pi Browser (needs operator Pi account)",
+    "Tailnet HTTPS certs not yet enabled (Tailscale admin console toggle)",
+    "Native C++ test:core not run on this host (cmake missing); WASM re-sim covers determinism",
+    "WASM rebuild needs Emscripten; committed artifacts used"
+  ]
+}

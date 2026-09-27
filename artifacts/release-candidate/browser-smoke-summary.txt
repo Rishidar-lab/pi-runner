@@ -1,0 +1,13 @@
+Kurinji Run — LOCAL SMOKE (plain HTTP, guest mode; NOT proof of Pi SDK integration)
+Captured: 2026-09-27T00:59:18Z on host Rishidar
+Commit: 9952549
+
+Server booted: node server/server.js (PI_API_KEY absent -> Pi login/payments disabled, as expected)
+GET /api/health      -> 200 {ok:true, service:"pi-runner", version:"2.1.0", nodeChallenge:true}
+GET /api/products    -> 200 {gold_shield_unlock_v1:{amount:1}}
+GET /                 -> 200 SPA (index.html served)
+POST /api/approve (no key) -> 500 fail-closed config error (PI_API_KEY required)
+
+Guest vs Pi mode: with no PI_API_KEY the server logs "Pi login/payments disabled;
+Node Challenge runs locally" — guest/local gameplay works; Pi features are dark.
+Real Pi SDK auth + payment flow require HTTPS + Pi Browser (see docs/TESTNET.md).

@@ -1,0 +1,21 @@
+Kurinji Run / Pi Runner — TEST SUMMARY
+Captured: 2026-09-27T00:58:20Z on host Rishidar
+Commit: 9952549 (branch solohost/pi-runner)
+
+== JS suite (node --test) ==
+# tests 99
+# suites 0
+# pass 99
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+
+== TypeScript typecheck ==
+PASS (tsc --noEmit, exit 0)
+
+== Frontend sync (build:frontend + git diff public) ==
+IN SYNC (public/ matches web/src)
+
+== Native C++ core (test:core) ==
+NOT RUN on this host — cmake not installed (needs sudo). Core unchanged since bf3eeac (2026-08-28); validated indirectly by WASM re-simulation test in the JS suite; CI runs the native gate.

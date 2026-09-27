@@ -1,0 +1,11 @@
+Kurinji Run — BUILD SUMMARY
+Captured: 2026-09-27T00:59:18Z on host Rishidar
+Commit: 9952549
+
+typecheck (tsc -p web/tsconfig.json --noEmit) : PASS
+build:frontend (web/src -> public, 14 modules)  : PASS, public/ in sync with git
+Committed self-contained artifacts present      : public/, server/pirun_core_node.js
+WASM rebuild (build:wasm / build)               : NOT RUN — needs Emscripten (emsdk) toolchain;
+                                                  committed wasm-embedded artifacts used instead.
+Native C++ (test:core)                          : NOT RUN — needs cmake (sudo); CI covers it.
+node: v22.14.0   npm: 10.9.2

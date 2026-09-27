@@ -127,6 +127,33 @@ function expectedNetwork() {
 }
 
 /**
+ * Server-side payment gate (defence in depth — the client flag can be bypassed).
+ *
+ * Value-moving payment routes stay OFF until deliberately enabled, and Mainnet
+ * is never enabled merely by supplying an API key:
+ *   - PI_PAYMENTS_ENABLED must be truthy (default OFF) — mirrors the client
+ *     FLAGS.PI_PAYMENTS_ENABLED so a direct API call cannot bypass the gate.
+ *   - On mainnet, PI_ALLOW_MAINNET must ALSO be explicitly set. This keeps
+ *     Testnet the safe path: forgetting PI_NETWORK fails closed on mainnet.
+ * Returns true if the request may proceed; otherwise writes a 503 and false.
+ */
+const truthy = (v) => v === '1' || v === 'true';
+function paymentsEnabled() { return truthy(process.env.PI_PAYMENTS_ENABLED); }
+function mainnetAllowed() { return truthy(process.env.PI_ALLOW_MAINNET); }
+function paymentsGate(res) {
+  if (!paymentsEnabled()) {
+    res.status(503).json({ error: 'Payments are disabled on this server', reason: 'payments_disabled' });
+    return false;
+  }
+  if (expectedNetwork() === 'mainnet' && !mainnetAllowed()) {
+    log.warn('payment.blocked', { reason: 'mainnet_not_allowed' });
+    res.status(503).json({ error: 'Mainnet payments are not enabled', reason: 'mainnet_disabled' });
+    return false;
+  }
+  return true;
+}
+
+/**
  * Validate a Pi payment against the authoritative product catalog.
  * Returns { ok, reason? }.
  */
@@ -136,6 +163,7 @@ function validatePaymentForProduct(payment, uid, productId) {
 
 app.post('/api/approve', async (req, res) => {
   if (!requireApiKey(res)) return;
+  if (!paymentsGate(res)) return;
   try {
     const { paymentId, productId } = req.body || {};
     if (!paymentId || typeof paymentId !== 'string') return res.status(400).json({ error: 'Missing paymentId' });
@@ -168,6 +196,7 @@ app.post('/api/approve', async (req, res) => {
 
 app.post('/api/complete', async (req, res) => {
   if (!requireApiKey(res)) return;
+  if (!paymentsGate(res)) return;
   try {
     const { paymentId, productId } = req.body || {};
     if (!paymentId || typeof paymentId !== 'string') return res.status(400).json({ error: 'Missing paymentId' });

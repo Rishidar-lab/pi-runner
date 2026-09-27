@@ -10,7 +10,8 @@ gives the exact checklist. Nothing here is marked verified until you run it._
 |---|---|
 | Pi SDK auth (`Pi.authenticate` → server `/api/me` token verification) | ✅ implemented |
 | Payment creation with server approve → complete → cancel/error | ✅ implemented |
-| **Server-side payment validation** (amount, memo, buyer, network, product) | ✅ implemented + 7 new unit tests |
+| **Server-side payment validation** (amount, memo, buyer, network, product) | ✅ implemented + unit tests + **30 route-level adversarial tests** |
+| **Server-side payment gate** (`PI_PAYMENTS_ENABLED`, `PI_ALLOW_MAINNET`, both default OFF) | ✅ implemented — value routes fail closed; Mainnet locked |
 | Access-token binding on every payment callback (uid from verified token, not client body) | ✅ implemented |
 | Idempotent completion + interrupted-payment recovery (server re-fetches payment state) | ✅ implemented |
 | Entitlement granted exactly once, only after verified completion | ✅ implemented |
@@ -31,12 +32,20 @@ gives the exact checklist. Nothing here is marked verified until you run it._
       cd ~/pi-runner
       cp .env.example .env
       ```
-      Then edit `~/.env` — no wait, edit `~/pi-runner/.env` — and set:
+      Then edit `~/pi-runner/.env` and set:
       ```
       PI_API_KEY=<your Testnet Server API key>
       PI_NETWORK=testnet
+      PI_PAYMENTS_ENABLED=1     # server-side gate — enables payment routes for A–H
+      # PI_ALLOW_MAINNET stays 0 — Mainnet remains locked
       ```
       Keep this file secret; it is git-ignored. **Never paste the key into chat.**
+      The server refuses payments unless `PI_PAYMENTS_ENABLED=1`, and refuses
+      Mainnet entirely unless `PI_ALLOW_MAINNET=1` — so a stray key cannot move
+      real Pi. Both stay OFF in git; you set them locally only for this test run.
+- [ ] **4b.** Build a test frontend with the client buy-button on: set
+      `PI_PAYMENTS_ENABLED: true` in `web/src/config.ts`, then
+      `npm run build:frontend`. (Do **not** commit this flip until A–H pass.)
 - [ ] **5.** Restart the server: `npm start` (it reads `.env` via the existing
       mechanism — or set the two env vars in your shell before `npm start`).
 - [ ] **6.** In the Pi Browser sandbox (`https://sandbox.minepi.com`), open your
@@ -69,11 +78,22 @@ A–H verified based on mocks or code inspection alone.**
 
 ## 3. Security notes for the Testnet phase
 
+- **Two-layer payment gate.** `PI_PAYMENTS_ENABLED` gates the server routes
+  (`/api/approve`, `/api/complete` → `503 payments_disabled` when off) AND the
+  client buy button (`web/src/config.ts`). Both default OFF. The server gate
+  means a direct API call cannot bypass the UI.
+- **Mainnet lock.** Even with payments enabled, the server refuses Mainnet
+  unless `PI_ALLOW_MAINNET=1` is *also* set (`503 mainnet_disabled`). Supplying
+  an API key alone never enables real-Pi movement. Keep it `0` all through Testnet.
 - `PI_NETWORK=testnet` makes the server **reject any Mainnet payment** and vice
   versa — wrong-network payments fail closed with `409 wrong_network`.
 - The Server API key lives only in `~/pi-runner/.env` (git-ignored). Never commit.
-- `PI_PAYMENTS_ENABLED` stays `false` in `web/src/config.ts` until A–H pass.
-- Mainnet payments, A2U payouts, and monetized ads remain **disabled**.
+- Server-authoritative validation: amount, memo, buyer (token-derived uid),
+  direction, network, product, and status are all checked against
+  `server/products.js` before approval or completion. Proven by 30 route-level
+  adversarial tests in `tests/payment-routes.test.mjs` (underpay, wrong buyer,
+  replay, complete-before-approve, missing txid, etc.).
+- A2U payouts and monetized ads remain **disabled**.
 
 ## 4. If a payment gets stuck
 
