@@ -25,10 +25,13 @@
  * from the environment and never sent to clients.
  */
 'use strict';
+require('./env'); // load .env (if present) before any config is read — see server/env.js
 const express = require('express');
 const path = require('path');
 const store = require('./store');
 const pi = require('./pi');
+const products = require('./products');
+const paymentVerify = require('./payment-verify');
 const leaderboard = require('./leaderboard');
 const rewards = require('./rewards');
 const log = require('./log');
@@ -96,21 +99,69 @@ app.post('/api/me', async (req, res) => {
   } catch (e) { log.error('pi.error', { route: '/api/me', message: e.message }); return res.status(500).json({ error: 'Server error verifying user' }); }
 });
 
-// ---- payments (idempotent) ------------------------------------------------
+// ---- payments (verified + idempotent) -------------------------------------
+// The browser is untrusted. Every payment callback must carry the user's
+// access token; the server re-verifies it via Pi (/me) to learn the TRUE uid,
+// then fetches the payment from Pi and validates it against the authoritative
+// product catalog BEFORE approving. The client cannot choose the price, the
+// recipient, the network, or the buyer.
+
+/** Verify the caller's access token and return the authoritative uid. */
+async function verifiedUid(req, res) {
+  const { accessToken } = req.body || {};
+  if (!accessToken || typeof accessToken !== 'string') {
+    res.status(401).json({ error: 'Missing accessToken' });
+    return null;
+  }
+  const user = await pi.verifyUser(accessToken);
+  if (!user || !user.uid) {
+    res.status(401).json({ error: 'Invalid or expired access token' });
+    return null;
+  }
+  return user.uid;
+}
+
+/** Expected payment network from env (default mainnet). */
+function expectedNetwork() {
+  return (process.env.PI_NETWORK || 'mainnet').toLowerCase();
+}
+
+/**
+ * Validate a Pi payment against the authoritative product catalog.
+ * Returns { ok, reason? }.
+ */
+function validatePaymentForProduct(payment, uid, productId) {
+  return paymentVerify.validatePaymentForProduct(payment, uid, productId, expectedNetwork());
+}
+
 app.post('/api/approve', async (req, res) => {
   if (!requireApiKey(res)) return;
   try {
-    const { paymentId, uid } = req.body || {};
-    if (!paymentId) return res.status(400).json({ error: 'Missing paymentId' });
+    const { paymentId, productId } = req.body || {};
+    if (!paymentId || typeof paymentId !== 'string') return res.status(400).json({ error: 'Missing paymentId' });
+    if (!productId || typeof productId !== 'string') return res.status(400).json({ error: 'Missing productId' });
+
+    const uid = await verifiedUid(req, res);
+    if (!uid) return;
 
     const existing = store.getPayment(paymentId);
-    if (existing && existing.status && existing.status !== 'created') {
-      return res.json({ ok: true, idempotent: true, status: existing.status });
+    if (existing && existing.status === 'approved') {
+      return res.json({ ok: true, idempotent: true, status: 'approved' });
     }
-    store.setPayment(paymentId, { uid: uid || null, status: 'approving' });
+
+    // Fetch the payment from Pi and validate it against the catalog.
+    const fetched = await pi.getPayment(paymentId);
+    if (!fetched.ok) return res.status(fetched.status || 502).json({ error: 'Could not fetch payment', detail: fetched.data });
+    const check = validatePaymentForProduct(fetched.data, uid, productId);
+    if (!check.ok) {
+      log.warn('payment.rejected', { route: '/api/approve', reason: check.reason, productId });
+      return res.status(409).json({ error: 'Payment validation failed', reason: check.reason });
+    }
+
+    store.setPayment(paymentId, { uid, status: 'approving' });
     const r = await pi.approvePayment(paymentId);
-    if (!r.ok) { store.setPayment(paymentId, { status: 'created' }); return res.status(r.status).json({ error: 'Approve failed', detail: r.data }); }
-    store.setPayment(paymentId, { status: 'approved' });
+    if (!r.ok) { store.setPayment(paymentId, { uid, status: 'created' }); return res.status(r.status).json({ error: 'Approve failed', detail: r.data }); }
+    store.setPayment(paymentId, { uid, status: 'approved' });
     return res.json({ ok: true, payment: r.data });
   } catch (e) { log.error('pi.error', { route: '/api/approve', message: e.message }); return res.status(500).json({ error: 'Server error approving payment' }); }
 });
@@ -118,21 +169,63 @@ app.post('/api/approve', async (req, res) => {
 app.post('/api/complete', async (req, res) => {
   if (!requireApiKey(res)) return;
   try {
-    const { paymentId, txid, uid } = req.body || {};
-    if (!paymentId) return res.status(400).json({ error: 'Missing paymentId' });
+    const { paymentId, productId } = req.body || {};
+    if (!paymentId || typeof paymentId !== 'string') return res.status(400).json({ error: 'Missing paymentId' });
+    if (!productId || typeof productId !== 'string') return res.status(400).json({ error: 'Missing productId' });
+
+    const uid = await verifiedUid(req, res);
+    if (!uid) return;
 
     const existing = store.getPayment(paymentId);
     if (existing && existing.status === 'completed') {
       return res.json({ ok: true, idempotent: true, granted: store.hasUnlock(existing.uid || uid) });
     }
-    const r = await pi.completePayment(paymentId, txid);
-    if (!r.ok) return res.status(r.status).json({ error: 'Complete failed', detail: r.data });
 
-    const owner = uid || (existing && existing.uid) || null;
+    // Re-fetch the payment: only complete when Pi says the transaction is
+    // verified and a txid exists. Never trust a client-supplied txid alone.
+    const fetched = await pi.getPayment(paymentId);
+    if (!fetched.ok) return res.status(fetched.status || 502).json({ error: 'Could not fetch payment', detail: fetched.data });
+    const p = fetched.data;
+    const st = p.status || {};
+    if (st.developer_completed) {
+      // Pi already shows it completed — reconcile our side idempotently.
+      const owner = p.user_uid || uid;
+      if (owner) store.grantUnlock(owner);
+      store.setPayment(paymentId, { uid: owner, status: 'completed' });
+      return res.json({ ok: true, idempotent: true, granted: store.hasUnlock(owner) });
+    }
+    if (!st.transaction_verified || !p.transaction || !p.transaction.txid) {
+      return res.status(409).json({ error: 'Transaction not verified yet', reason: 'tx_not_ready' });
+    }
+    const check = validatePaymentForProduct(p, uid, productId);
+    if (!check.ok) {
+      log.warn('payment.rejected', { route: '/api/complete', reason: check.reason, productId });
+      return res.status(409).json({ error: 'Payment validation failed', reason: check.reason });
+    }
+
+    const r = await pi.completePayment(paymentId, p.transaction.txid);
+    if (!r.ok) {
+      // Pi may have completed it between our GET and POST — re-check before failing.
+      const recheck = await pi.getPayment(paymentId);
+      if (recheck.ok && recheck.data?.status?.developer_completed) {
+        const owner = recheck.data.user_uid || uid;
+        if (owner) store.grantUnlock(owner);
+        store.setPayment(paymentId, { uid: owner, status: 'completed' });
+        return res.json({ ok: true, idempotent: true, granted: store.hasUnlock(owner) });
+      }
+      return res.status(r.status).json({ error: 'Complete failed', detail: r.data });
+    }
+
+    const owner = p.user_uid || uid;
     if (owner) store.grantUnlock(owner);
     store.setPayment(paymentId, { uid: owner, status: 'completed' });
     return res.json({ ok: true, granted: Boolean(owner), payment: r.data });
   } catch (e) { log.error('pi.error', { route: '/api/complete', message: e.message }); return res.status(500).json({ error: 'Server error completing payment' }); }
+});
+
+// ---- public product catalog (no secrets) ----------------------------------
+app.get('/api/products', (_req, res) => {
+  res.json({ ok: true, products: products.listProducts() });
 });
 
 app.get('/api/unlock-status', (req, res) => {

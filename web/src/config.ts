@@ -50,7 +50,7 @@ export const REWARDS = {
 export const GOLD_UNLOCK = {
   id: 'gold_shield_unlock_v1',
   amount: 1, // π
-  memo: 'Unlock Gold Orb + Shield in Pi Runner',
+  memo: 'Unlock Gold Orb + Shield in Kurinji Run',
   price: '1 π',
 } as const;
 

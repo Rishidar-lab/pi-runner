@@ -1,16 +1,18 @@
-# Terms of Use — Pi Runner
+# Terms of Use — Kurinji Run
 
-_Last updated: 2026-08-01. Replace bracketed details before launch._
+_Last updated: 2026-09-27. Replace bracketed details before launch._
 
-By playing Pi Runner ("the Game") you agree to these terms.
+By playing Kurinji Run ("the Game") you agree to these terms.
 
 ## The Game
-Pi Runner is a free-to-play arcade endless runner. All gameplay is free. Optional
+Kurinji Run is a free-to-play arcade endless runner. All gameplay is free. Optional
 features integrate with Pi Network:
 - **Login with Pi** to sign in.
 - An optional **cosmetic** purchase (Gold Orb + shield) for 1 π — purely
-  cosmetic, never pay-to-win.
-- Optional **rewards** (rewarded ads and/or play-to-earn π), where offered.
+  cosmetic plus one starting shield, never pay-to-win. The price and product are
+  defined server-side; the client cannot change them.
+- Optional **rewards** (rewarded ads and/or play-to-earn π), where offered and
+  only after the corresponding Pi approval.
 
 ## Rewards & play-to-earn
 - Rewards are **discretionary, capped, and subject to verification.** Each run is
@@ -21,10 +23,14 @@ features integrate with Pi Network:
 - Rewarded-ad perks (e.g., revive) are in-game only and carry no monetary value.
 - Any π payout is executed through Pi's Platform (App-to-User payments) and is
   subject to Pi Network's own terms and network conditions.
+- **Game points are not Pi.** In-game score, coins, and skins have no monetary
+  value and are not convertible except through an approved reward mechanism.
 
 ## Fair play
 You agree not to cheat, automate, tamper with the client, reverse the scoring, or
 otherwise manipulate rewards. We may suspend access or rewards for violations.
+Scores are accepted only when the server can re-simulate them from the run's seed
+and input tape.
 
 ## No warranty / limitation of liability
 The Game is provided "as is" without warranties. To the maximum extent permitted
@@ -38,4 +44,4 @@ respective owners; this Game is an independent third-party app.
 
 ## Changes & contact
 We may update these terms; continued play means acceptance. Questions:
-[your-email@example.com] — https://github.com/Rishidar-lab/pi-runner
+[your-email@example.com] — [your repo URL]

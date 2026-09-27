@@ -107,27 +107,30 @@ export class PiAdapter {
       const login = await this.login();
       if (!login.ok) return login;
     }
-    const uid = this.user!.uid;
 
     return new Promise<PiResult<true>>((resolve) => {
       window.Pi!.createPayment(
         { amount: GOLD_UNLOCK.amount, memo: GOLD_UNLOCK.memo, metadata: { item: GOLD_UNLOCK.id } },
         {
+          // The access token is sent with every callback so the server can
+          // re-verify our identity and bind the payment to the verified uid.
+          // The server fetches the payment from Pi and validates amount/memo/
+          // network itself — nothing here is trusted blindly.
           onReadyForServerApproval: (paymentId) => {
             fetch('/api/approve', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ paymentId, uid }),
+              body: JSON.stringify({ paymentId, productId: GOLD_UNLOCK.id, accessToken: this.accessToken }),
             }).catch((e) => console.error('approve failed', e));
           },
-          onReadyForServerCompletion: (paymentId, txid) => {
+          onReadyForServerCompletion: (paymentId) => {
             fetch('/api/complete', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ paymentId, txid, uid }),
+              body: JSON.stringify({ paymentId, productId: GOLD_UNLOCK.id, accessToken: this.accessToken }),
             })
               .then((r) => r.json())
               .then((d) => {
                 if (d?.ok && d?.granted) resolve({ ok: true, value: true });
-                else resolve({ ok: false, reason: 'error', message: 'Unlock not granted' });
+                else resolve({ ok: false, reason: 'error', message: d?.error || 'Unlock not granted' });
               })
               .catch((e) => resolve({ ok: false, reason: 'error', message: String(e) }));
           },
@@ -162,14 +165,19 @@ export class PiAdapter {
     }
   }
 
-  /** SDK callback: finish a payment that was interrupted on a prior visit. */
+  /**
+   * SDK callback: finish a payment that was interrupted on a prior visit.
+   * The payment may not have a txid yet — the server re-fetches it from Pi and
+   * completes only when the transaction is verified. We send the access token
+   * so the server can re-verify our identity (never send the txid ourselves).
+   */
   private recoverIncomplete(p: PiPayment): void {
     const paymentId = p?.identifier;
     if (!paymentId) return;
     fetch('/api/complete', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paymentId, txid: p.transaction?.txid, uid: this.user?.uid }),
-    }).catch(() => { /* best effort */ });
+      body: JSON.stringify({ paymentId, productId: GOLD_UNLOCK.id, accessToken: this.accessToken }),
+    }).catch(() => { /* best effort — the SDK will retry on the next login */ });
   }
 }
 

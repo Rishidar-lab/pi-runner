@@ -44,6 +44,64 @@ test('unlock is idempotent (double completion stays granted, single owner)', () 
   assert.equal(store.hasUnlock(uid), true);
 });
 
+// ---- payment validation (server-side, untrusted client) -------------------
+const paymentVerify = require(join(ROOT, 'server', 'payment-verify.js'));
+
+function piPayment(over = {}) {
+  return {
+    identifier: 'pay_x',
+    user_uid: 'user_abc',
+    amount: 1,
+    memo: 'Unlock Gold Orb + Shield in Kurinji Run',
+    metadata: { item: 'gold_shield_unlock_v1' },
+    direction: 'U2A',
+    network: 'Mainnet',
+    status: { developer_approved: false, transaction_verified: false, developer_completed: false, cancelled: false, user_cancelled: false },
+    transaction: null,
+    ...over,
+  };
+}
+
+test('payment verification accepts a genuine payment', () => {
+  const r = paymentVerify.validatePaymentForProduct(piPayment(), 'user_abc', 'gold_shield_unlock_v1', 'mainnet');
+  assert.equal(r.ok, true);
+});
+
+test('payment verification rejects wrong amount (client tries to underpay)', () => {
+  const r = paymentVerify.validatePaymentForProduct(piPayment({ amount: 0.001 }), 'user_abc', 'gold_shield_unlock_v1', 'mainnet');
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'amount_mismatch');
+});
+
+test('payment verification rejects wrong buyer', () => {
+  const r = paymentVerify.validatePaymentForProduct(piPayment({ user_uid: 'attacker' }), 'user_abc', 'gold_shield_unlock_v1', 'mainnet');
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'payment_owner_mismatch');
+});
+
+test('payment verification rejects wrong network (testnet payment on mainnet host)', () => {
+  const r = paymentVerify.validatePaymentForProduct(piPayment({ network: 'Testnet' }), 'user_abc', 'gold_shield_unlock_v1', 'mainnet');
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'wrong_network');
+});
+
+test('payment verification accepts testnet payment when host expects testnet', () => {
+  const r = paymentVerify.validatePaymentForProduct(piPayment({ network: 'Testnet' }), 'user_abc', 'gold_shield_unlock_v1', 'testnet');
+  assert.equal(r.ok, true);
+});
+
+test('payment verification rejects unknown product', () => {
+  const r = paymentVerify.validatePaymentForProduct(piPayment(), 'user_abc', 'nonexistent_product', 'mainnet');
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'unknown_product');
+});
+
+test('payment verification rejects cancelled payments', () => {
+  const r = paymentVerify.validatePaymentForProduct(piPayment({ status: { cancelled: true } }), 'user_abc', 'gold_shield_unlock_v1', 'mainnet');
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'payment_cancelled');
+});
+
 test('leaderboard.verify rejects malformed submissions', async () => {
   assert.equal((await leaderboard.verify(null)).ok, false);
   assert.equal((await leaderboard.verify({ seed: 'x' })).ok, false);

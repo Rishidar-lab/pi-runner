@@ -1,54 +1,53 @@
-# STATUS — Kurinji Run (ex-"Pi Runner")
+# STATUS — Kurinji Run
 
-_Last updated: 2026-09-27. Honest state: what works, what's blocked, what's yours._
+_Last updated: 2026-09-27 (release-candidate prep). Honest state._
 
 ## ✅ Implemented & verified working
 
 | Item | Evidence |
 |---|---|
-| Original endless runner (C++→WASM deterministic core + TS shell) | 70/70 C++ assertions, 62/62 JS tests green |
+| Original endless runner (C++→WASM core + TS shell + Express backend) | 70/70 C++ + 69/69 JS tests green; typecheck clean |
 | Server-side score validation (re-simulation from seed+tape) | `npm run test:js` — inflated scores rejected with server-computed truth |
-| Node Challenge (local verified leaderboard, daily seed, replay prevention) | challenge test suites green |
-| Payments/auth/ads/A2U behind feature flags (all OFF by default) | `web/src/config.ts`; server routes implemented + tested |
-| Tamil + English UI (i18n, persisted, settings toggle) | `web/src/i18n.ts` — new |
-| Seasonal leaderboards (explicit UTC quarters, verified runs only) | `GET /api/leaderboard?season=…` — new, live-tested |
-| Watch-only wallet companion (official Horizon API) | `~/pi-wallet-companion` — live on :3100, tested |
-| Research: sources, balance actions, earning routes, competitors, growth, security findings, node feasibility, economics | `docs/*.md` |
-| Scenario model (seeded, labelled assumptions) | `scripts/scenario.mjs` — runs |
+| Node Challenge (local verified leaderboard, replay prevention) | challenge suites green |
+| **Server-side payment validation** (NEW) | `server/products.js` + `server/payment-verify.js`; 7 new unit tests; endpoints fail closed without API key; token verified per-request |
+| Tamil + English i18n | `web/src/i18n.ts`; mobile layout tested, no overflow |
+| Seasonal leaderboards (explicit UTC quarters) | `GET /api/leaderboard?season=…` live-tested |
+| Strict CSP, no eval (DYNAMIC_EXECUTION=0) | browser test: zero page errors |
+| Watch-only wallet companion | `~/pi-wallet-companion` on :3100, tested vs official Horizon API |
+| **Phone access via Tailscale** | game on `0.0.0.0:3000`; `http://100.125.204.16:3000` returns 200; phone (medusa-v) on same tailnet |
+| Mobile playability (desktop emulation, 390×844, touch) | tap-to-play, pause/resume, game-over/retry, 60.3 FPS, Tamil layout clean |
+| `.env` loader (no dotenv dep) | `server/env.js` — real env wins, values never logged |
 
 ## 🧪 Experimental / not independently verified
-
-- Pi login & payments: code complete, **not exercised** (needs Pi Browser +
-  your account + sandbox). Never claimed as working.
+- **Real Pi auth + Testnet payment flow** — code complete + unit-tested, but
+  requires your Pi Browser + account. See `docs/TESTNET.md` checklist A–H.
+  **Not marked verified.**
 - Rewarded ads: server verification implemented; no approval, no real ad traffic.
 - A2U payouts: disabled; needs approval + funded wallet.
-- Independent wallet signer: **BLOCKED** — Pi publishes no passphrase→key
-  derivation vectors; cannot validate without your real passphrase (which must
-  never be shared). Watch-only only.
+- Independent wallet signer: **not built** (no official derivation vectors;
+  watch-only only — and missing vectors is never a reason to ask for a
+  passphrase).
 
 ## ⏳ Awaiting your action / external approval
-
-1. Pi Developer Portal registration (Testnet + Mainnet apps) — `pi://develop.pinet.com`.
-2. Sandbox verification of login + cosmetic payment.
-3. Ad Network approval (if ads wanted); A2U approval + wallet (if payouts wanted).
-4. Mainnet listing submission (see docs/LISTING.md).
-5. Disk decision for the Pi node (~150 GB — see docs/NODE_FEASIBILITY.md).
-6. Security inquiry email — draft ready in docs/SECURITY_FINDINGS.md (DO NOT SEND without approval).
+1. **Play now**: `http://100.125.204.16:3000` in your phone's browser (same
+   Tailnet) — gameplay only, no Pi features.
+2. **Pi Testnet verification**: follow `docs/TESTNET.md` (register Testnet app,
+   set `PI_API_KEY` + `PI_NETWORK=testnet` in `~/pi-runner/.env`, HTTPS deploy,
+   sandbox authorize, run checklist A–H).
+3. **Approvals**: Ad Network, A2U, Mainnet listing (`docs/LISTING.md`).
+4. **Disk decision for Pi node**: infeasible at 2.7 GB free vs 150 GB official
+   minimum (`docs/NODE_FEASIBILITY.md`).
+5. **Security inquiry**: draft in `docs/SECURITY_FINDINGS.md` — unsent.
 
 ## 🚫 Cannot be supported by evidence
-
-- Any guarantee of node rewards (sources contradictory).
-- Any "play to earn" promise (no funded, approved mechanism).
-- Recovery/conversion of unverified Pi (depends on your KYC/migration status in
-  the official app — see docs/BALANCE_ACTIONS.md).
+- Node reward guarantees (sources contradictory).
+- "Play to earn" (no funded, approved mechanism).
+- Recovery of unverified Pi (`docs/BALANCE_ACTIONS.md`).
 - A public Pi bug bounty (not verified — none found on primary sources).
 
 ## 📁 Deliverables map
-
 ```
-~/pi-runner/            game + server + docs (SOURCES, BALANCE_ACTIONS, EARNING_ROUTES,
-                        COMPETITORS, GROWTH, SECURITY_FINDINGS, NODE_FEASIBILITY,
-                        ECONOMICS, LISTING) + RUNBOOK + STATUS
-~/pi-wallet-companion/  watch-only wallet tool (port 3100)
-~/kurinji-run-tracker.csv  daily economics tracker (copy from docs/ECONOMICS.md §5)
+~/pi-runner/            game + server + docs + RUNBOOK + STATUS (branch solohost/pi-runner)
+~/pi-wallet-companion/  watch-only wallet (port 3100)
+~/kurinji-run-tracker.csv  daily economics tracker
 ```

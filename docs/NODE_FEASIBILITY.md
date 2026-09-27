@@ -12,7 +12,7 @@ freed by a conscious user decision (see §5). Nothing was installed or changed.
 
 | Resource | Available | Node requirement (official) | OK? |
 |---|---|---|---|
-| Disk (`/`, nvme0n1p7) | **2.7 GB free / 187 GB (99% full)** | **150 GB min, 300 GB ideal** | ❌ **BLOCKED** |
+| Disk (`/`, nvme0n1p7) | **2.7 GB free / 187 GB (99% full)** | **"150GB disk space, to start (Ideally 300GB)"** — official minimum, verified 2026-09-27 | ❌ **BLOCKED** |
 | CPU | Ryzen 9 9900X, 12C/24T | 4 vCPUs | ✅ |
 | RAM | 30 GB total, ~17 GB available | 4 GB | ✅ |
 | GPU | RTX 4070 SUPER 12 GB | irrelevant to Pi node | — (no effect on rewards) |

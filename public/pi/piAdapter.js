@@ -71,7 +71,6 @@ export class PiAdapter {
             const login = await this.login();
             if (!login.ok) return login;
         }
-        const uid = this.user.uid;
         return new Promise((resolve)=>{
             window.Pi.createPayment({
                 amount: GOLD_UNLOCK.amount,
@@ -88,11 +87,12 @@ export class PiAdapter {
                         },
                         body: JSON.stringify({
                             paymentId,
-                            uid
+                            productId: GOLD_UNLOCK.id,
+                            accessToken: this.accessToken
                         })
                     }).catch((e)=>console.error('approve failed', e));
                 },
-                onReadyForServerCompletion: (paymentId, txid)=>{
+                onReadyForServerCompletion: (paymentId)=>{
                     fetch('/api/complete', {
                         method: 'POST',
                         headers: {
@@ -100,8 +100,8 @@ export class PiAdapter {
                         },
                         body: JSON.stringify({
                             paymentId,
-                            txid,
-                            uid
+                            productId: GOLD_UNLOCK.id,
+                            accessToken: this.accessToken
                         })
                     }).then((r)=>r.json()).then((d)=>{
                         if (d?.ok && d?.granted) resolve({
@@ -111,7 +111,7 @@ export class PiAdapter {
                         else resolve({
                             ok: false,
                             reason: 'error',
-                            message: 'Unlock not granted'
+                            message: d?.error || 'Unlock not granted'
                         });
                     }).catch((e)=>resolve({
                             ok: false,
@@ -181,8 +181,8 @@ export class PiAdapter {
             },
             body: JSON.stringify({
                 paymentId,
-                txid: p.transaction?.txid,
-                uid: this.user?.uid
+                productId: GOLD_UNLOCK.id,
+                accessToken: this.accessToken
             })
         }).catch(()=>{});
     }

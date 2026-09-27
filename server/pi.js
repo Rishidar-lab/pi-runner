@@ -17,6 +17,14 @@ async function verifyUser(accessToken) {
   return r.json();
 }
 
+async function getPayment(paymentId) {
+  const r = await fetch(`${PI_API_BASE}/payments/${encodeURIComponent(paymentId)}`, {
+    headers: { Authorization: `Key ${PI_API_KEY}` },
+  });
+  const data = await r.json().catch(() => ({}));
+  return { ok: r.ok, status: r.status, data };
+}
+
 async function approvePayment(paymentId) {
   const r = await fetch(`${PI_API_BASE}/payments/${paymentId}/approve`, {
     method: 'POST', headers: { Authorization: `Key ${PI_API_KEY}` },
@@ -79,6 +87,6 @@ async function cancelA2UPayment(paymentId) {
 }
 
 module.exports = {
-  hasApiKey, verifyUser, approvePayment, completePayment, PI_API_BASE,
+  hasApiKey, verifyUser, getPayment, approvePayment, completePayment, PI_API_BASE,
   getAdNetworkStatus, adGranted, createA2UPayment, completeA2UPayment, cancelA2UPayment,
 };
