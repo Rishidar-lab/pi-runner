@@ -13,8 +13,11 @@ node_modules/
 /web/src/core/pirun_core.wasm
 /server/pirun_core_node.wasm
 
-# Runtime data (persistent store)
+# Runtime data (persistent store) + throwaway test data dirs
 /server/data/
+/server/data-test*/
+/server/data-rewards-test/
+/build/native/
 
 # NOTE: /public/ and /server/pirun_core_node.js are intentionally COMMITTED as
 # self-contained (single-file, wasm-embedded) artifacts so the app can be

@@ -7,17 +7,7 @@
  * the recomputed score matches the claim. This is why the core is deterministic.
  */
 'use strict';
-const path = require('path');
-
-let corePromise = null;
-function getCore() {
-  if (!corePromise) {
-    // Built by scripts/build-wasm.sh (node target).
-    const factory = require(path.join(__dirname, 'pirun_core_node.js'));
-    corePromise = factory();
-  }
-  return corePromise;
-}
+const { getCore } = require('./simcore');
 
 const MAX_STEPS = 120 * 60 * 60; // 1 hour of play at 120 Hz — a generous ceiling
 const MAX_TAPE = 8192;

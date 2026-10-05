@@ -33,12 +33,15 @@ export interface MetaDoc {
   missions: { day: string; items: Array<{ id: string; done: boolean; progress: number }> };
   /** Daily challenge best result, keyed by date. */
   daily: { day: string; best: number };
+  /** Name used for Node Challenge runs when not signed in with Pi. */
+  player: { localName: string };
 }
 
 const DEFAULT_META: MetaDoc = {
   settings: { sound: true, music: true, reducedMotion: false, controls: 'auto' },
   missions: { day: '', items: [] },
   daily: { day: '', best: 0 },
+  player: { localName: '' },
 };
 
 export class Store {
