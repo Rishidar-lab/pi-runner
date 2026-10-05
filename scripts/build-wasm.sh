@@ -10,6 +10,18 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC=("$ROOT/core/src/sim.cpp" "$ROOT/core/bindings/wasm.cpp")
 INC="$ROOT/core/include"
+
+# Pinned release toolchain — keep in sync with scripts/build-dist.mjs
+# (EXPECTED_EMCC) and .github/workflows/ci.yml (wasm-build). This dev build feeds
+# the same sources to Emscripten as build:dist; only the committed self-contained
+# artifacts (build:dist) are byte-gated in CI.
+EXPECTED_EMCC="6.0.8"
+EMCC_VER="$(em++ --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+if [ "$EMCC_VER" != "$EXPECTED_EMCC" ]; then
+  echo "build:wasm is pinned to Emscripten $EXPECTED_EMCC but em++ reports '${EMCC_VER:-none}'." >&2
+  echo "Install it: emsdk install $EXPECTED_EMCC && emsdk activate $EXPECTED_EMCC" >&2
+  exit 1
+fi
 COMMON=(-std=c++17 -O3 -flto --bind -s ALLOW_MEMORY_GROWTH=1 -s FILESYSTEM=0 -s ASSERTIONS=0)
 
 WEB_OUT="$ROOT/web/src/core"; mkdir -p "$WEB_OUT"

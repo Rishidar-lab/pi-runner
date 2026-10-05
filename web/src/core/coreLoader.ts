@@ -23,6 +23,7 @@ export interface RunnerHandle {
   start(): void;
   pause(): void;
   resume(): void;
+  revive(): void;
   input(cmd: number): void;
   advance(dt: number): void;
   state(): number;

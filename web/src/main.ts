@@ -7,16 +7,17 @@
  * step index — this "command tape" (seed + inputs) is what the server replays
  * to validate a leaderboard score.
  */
-import { loadCore, Cmd, St, Pickup, type CoreModule, type RunnerHandle } from './core/coreLoader.js';
+import { loadCore, Cmd, St, type CoreModule, type RunnerHandle } from './core/coreLoader.js';
 import { Renderer } from './render/renderer.js';
 import { Input, type InputEvent } from './input/input.js';
 import { Audio } from './audio/audio.js';
 import { UI } from './ui/ui.js';
 import { Store } from './persistence/store.js';
 import { PiAdapter } from './pi/piAdapter.js';
-import { skinByIndex, SKINS } from './game/skins.js';
+import { SKINS } from './game/skins.js';
 import { evaluate as evalAchievements, type RunResult } from './game/achievements.js';
 import { ensureDailyMissions, applyRunToMissions, dailySeed } from './game/missions.js';
+import { NodeChallengeClient, type RunTicket } from './game/nodeChallenge.js';
 import { FLAGS } from './config.js';
 
 const FIXED_DT = 1 / 120; // must match cfg::FIXED_DT
@@ -30,6 +31,7 @@ class Game {
   private ui!: UI;
   private store!: Store;
   private pi = new PiAdapter();
+  private nc = new NodeChallengeClient();
 
   private acc = 0;
   private last = 0;
@@ -48,6 +50,10 @@ class Game {
   private replaying = false;
   private replayStep = 0;
   private replayIdx = 0;
+
+  // Node Challenge: the server-issued ticket for the current run (null = a
+  // normal free-play run). The browser never picks the seed for a challenge.
+  private challengeTicket: RunTicket | null = null;
 
   // play-to-earn / revive bookkeeping (per run session)
   private revivedThisRun = false;
@@ -144,6 +150,113 @@ class Game {
     if (this.store.meta.settings.music) this.audio.startMusic();
   }
 
+  /**
+   * Start a Node Challenge run. The node issues the seed — the browser never
+   * picks it — and the run is played with no cosmetic shield (competitive
+   * parity). The recorded tape is re-simulated by the node on game-over.
+   */
+  private async startNodeChallenge(): Promise<void> {
+    let ticket: RunTicket;
+    try {
+      ticket = await this.nc.start();
+    } catch {
+      this.ui.toast('Could not reach your Pi Runner Node. Try again.');
+      return;
+    }
+    this.challengeTicket = ticket;
+    this.audio.resume();
+    this.curSeed = ticket.seed >>> 0;
+    this.curUnlockShield = false;            // no pay-to-win in the challenge
+    this.curSkin = this.store.selectedSkin;  // cosmetic only — sim is unaffected
+    this.core.reset(this.curSeed, false, this.curSkin);
+    this.core.start();
+    this.renderer.setSkin(this.curSkin);
+    this.acc = 0; this.stepIdx = 0; this.pendingInputs = [];
+    this.tapeSteps = []; this.tapeCmds = [];
+    this.revivedThisRun = false; this.recordedCoins = 0; this.recordedDistance = 0; this.runCounted = false;
+    this.prev = { coins: 0, shield: false, magnet: 0, boost: 0, slowmo: 0, gems: 0, state: St.Playing };
+    this.toggleControls(true);
+    this.ui.hideAll();
+    this.ui.setChallengeBadge(true);
+    if (this.store.meta.settings.music) this.audio.startMusic();
+  }
+
+  /** Open the Node Challenge screen (fetches the live challenge + best/leaderboard). */
+  private async openNodeChallenge(): Promise<void> {
+    this.ui.showLoading('Contacting your Pi Runner Node…');
+    try {
+      const [challenge, board, status] = await Promise.all([
+        this.nc.current(),
+        this.nc.leaderboard().catch(() => null),
+        this.nc.nodeStatus().catch(() => null),
+      ]);
+      const me = this.identityName();
+      const myRow = board?.entries.find((e) => e.username === me) ?? null;
+      this.ui.showNodeChallenge({
+        challenge,
+        nodeLabel: status?.node.label ?? 'your Node',
+        best: status?.today.bestVerifiedScore ?? 0,
+        myBest: myRow?.score ?? 0,
+        top: board?.entries.slice(0, 3) ?? [],
+        isPiUser: Boolean(this.pi.user),
+        localName: this.store.meta.player.localName,
+      });
+    } catch {
+      this.ui.toast('Node Challenge is unavailable right now.');
+      this.ui.showMenu(this.store.best, this.store.totalCoins);
+    }
+  }
+
+  private identityName(): string {
+    if (this.pi.user) return this.pi.user.username;
+    const n = (this.store.meta.player.localName || 'Player').replace(/[^\w.\- ]/g, '').trim().slice(0, 24) || 'Player';
+    return `${n} (local)`;
+  }
+
+  /** Submit the finished challenge run for authoritative re-simulation. */
+  private async submitChallengeRun(result: RunResult): Promise<void> {
+    const ticket = this.challengeTicket;
+    this.challengeTicket = null;
+    this.ui.setChallengeBadge(false);
+    if (!ticket || !this.lastRun) { this.ui.showMenu(this.store.best, this.store.totalCoins); return; }
+    this.ui.showVerifying();
+    let res;
+    try {
+      res = await this.nc.submit({
+        ticket,
+        steps: this.lastRun.steps,
+        tapeSteps: this.lastRun.tapeSteps,
+        tapeCmds: this.lastRun.tapeCmds,
+        score: result.score, distance: result.distance, coins: result.coins,
+        accessToken: this.pi.token,
+        localName: this.pi.user ? null : (this.store.meta.player.localName || 'Player'),
+      });
+    } catch {
+      res = { ok: false as const, verified: false as const, reason: 'NETWORK' };
+    }
+    this.ui.showChallengeResult(res, ticket.challengeId, this.identityName());
+  }
+
+  private async openNodeDashboard(): Promise<void> {
+    this.ui.showLoading('Reading node status…');
+    try {
+      this.ui.showNodeDashboard(await this.nc.nodeStatus());
+    } catch {
+      this.ui.toast('Could not read node status.');
+      this.ui.showMenu(this.store.best, this.store.totalCoins);
+    }
+  }
+
+  private async openChallengeLeaderboard(): Promise<void> {
+    this.ui.showLoading('Loading verified runs…');
+    try {
+      const board = await this.nc.leaderboard();
+      this.ui.showChallengeLeaderboard(board, this.identityName());
+    } catch {
+      this.ui.toast('Could not load the leaderboard.');
+    }
+  }
+
   private doPause(): void { this.core.pause(); this.settingsBack = 'pause'; this.ui.showPause(); this.toggleControls(false); }
   private doResume(): void { this.core.resume(); this.ui.hideAll(); this.toggleControls(true); }
 
@@ -184,6 +297,14 @@ class Game {
 
     // skin unlocks from new lifetime totals
     this.checkSkinUnlocks();
+
+    // Node Challenge: hand the run to the node for authoritative verification
+    // instead of the classic client-reported game-over flow.
+    if (this.challengeTicket) {
+      for (const a of newly) this.ui.toast(`Achievement: ${a.name} ★`);
+      void this.submitChallengeRun(result);
+      return;
+    }
 
     // leaderboard (best-effort, server re-simulates the tape to validate)
     if (FLAGS.LEADERBOARD_ENABLED) void this.submitScore(result);
@@ -333,7 +454,7 @@ class Game {
       onDaily: () => this.startRun(true),
       onResume: () => this.doResume(),
       onRestart: () => this.startRun(false),
-      onQuitToMenu: () => { this.core.reset(0, false, this.store.selectedSkin); this.toggleControls(false); this.audio.stopMusic(); this.prev.state = St.Menu; this.ui.showMenu(this.store.best, this.store.totalCoins); },
+      onQuitToMenu: () => { this.challengeTicket = null; this.ui.setChallengeBadge(false); this.core.reset(0, false, this.store.selectedSkin); this.toggleControls(false); this.audio.stopMusic(); this.prev.state = St.Menu; this.ui.showMenu(this.store.best, this.store.totalCoins); },
       onOpenSettings: () => this.ui.showSettings(this.store.meta, this.settingsBack),
       onOpenSkins: () => this.ui.showSkins(this.store.view.skinsUnlocked, this.store.selectedSkin, this.store.goldUnlock),
       onOpenMissions: () => { ensureDailyMissions(this.store.meta); this.ui.showMissions(this.store.meta, this.store.achievementsMask); },
@@ -348,6 +469,11 @@ class Game {
       onClaimReward: () => void this.claimReward(),
       onLogin: () => void this.login(),
       onBuyUnlock: () => void this.buyUnlock(),
+      onNodeChallenge: () => void this.openNodeChallenge(),
+      onNodeChallengePlay: () => void this.startNodeChallenge(),
+      onOpenNodeDashboard: () => void this.openNodeDashboard(),
+      onOpenChallengeLeaderboard: () => void this.openChallengeLeaderboard(),
+      onSetLocalName: (name: string) => { this.store.meta.player.localName = name; this.store.flushMeta(); },
       onToggleSound: (on: boolean) => { this.audio.setSound(on); this.store.meta.settings.sound = on; this.store.flushMeta(); },
       onToggleMusic: (on: boolean) => { this.audio.setMusic(on); this.store.meta.settings.music = on; this.store.flushMeta(); },
       onToggleReducedMotion: (on: boolean) => { this.renderer.reducedMotion = on; this.store.meta.settings.reducedMotion = on; this.store.flushMeta(); },
