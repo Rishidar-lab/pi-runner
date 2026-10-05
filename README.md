@@ -1,81 +1,201 @@
-# Pi Runner
+# Pi Runner 🏃‍♂️π
 
-A one-thumb lane-dodge arcade game that runs inside the **Pi Browser**, with **Login with Pi**
-and an optional **1 π** unlock (Gold Orb + a shield each run). The game is fully playable for
-free — the payment is optional, which is what lets the MVP work in sandbox before Mainnet
-payment approval.
+A polished 2D **Pi-themed endless runner** for the Pi ecosystem. Dash through a
+neon Pi grid, switch lanes, **jump** hurdles, **slide** under bars, bank **π**,
+chain combos, grab power-ups, complete missions, and climb a **cheat-resistant
+leaderboard**.
+
+> **Architecture at a glance — a hybrid build.** The game's deterministic
+> simulation "model" (player state, movement, obstacles, collectibles, scoring,
+> seeded procedural generation) is written in **C++** and compiled to
+> **WebAssembly**. Rendering, input, UI, audio, persistence and the Pi SDK live
+> in a clean **TypeScript** shell. The backend is **Node/Express**. Because the
+> core is deterministic, the server can **re-simulate any run from its seed +
+> input tape** to validate leaderboard scores — real anti-cheat, not trust.
+
+<sub>Note: Pi ecosystem apps run inside the **Pi Browser** and must be web apps.
+Native C++ can't run there, so the C++ core is delivered as WebAssembly and
+wrapped in the web shell that loads the Pi SDK — the standard, supported way to
+use C++ on Pi.</sub>
+
+---
+
+## Project layout
 
 ```
 pi-runner/
-├─ public/
-│  ├─ index.html      # loads the Pi SDK + the game shell
-│  ├─ style.css       # neon-arcade UI, mobile-first portrait
-│  └─ app.js          # Pi auth + payment layer, and the canvas game
-├─ server.js          # Express: serves the app + 3 Pi server routes
-├─ package.json
-└─ .env.example
+├─ core/                        # C++17 deterministic core ("the model")
+│  ├─ include/pirun/pirun.hpp    # types, config, RNG, Simulation, Profile
+│  ├─ src/sim.cpp                # simulation implementation
+│  ├─ bindings/wasm.cpp          # Emscripten/embind exports
+│  ├─ tests/test_sim.cpp         # native C++ test suite (no framework)
+│  └─ CMakeLists.txt             # native build for tests + re-sim tooling
+├─ web/                         # TypeScript shell (browser)
+│  ├─ src/
+│  │  ├─ main.ts                 # orchestrator + fixed-step game loop
+│  │  ├─ core/coreLoader.ts      # typed WASM wrapper
+│  │  ├─ render/renderer.ts      # 2.5D perspective canvas renderer
+│  │  ├─ input/input.ts          # keyboard + touch gestures + buttons
+│  │  ├─ ui/ui.ts                # screens, HUD, toasts
+│  │  ├─ audio/audio.ts          # procedural Web Audio SFX + music
+│  │  ├─ persistence/store.ts    # save abstraction (cloud-ready)
+│  │  ├─ pi/piAdapter.ts         # Pi auth + payment adapter (feature-flagged)
+│  │  ├─ game/                    # skins, achievements, missions/dailies
+│  │  └─ config.ts               # FEATURE FLAGS
+│  ├─ index.html · style.css
+├─ server/                      # Node/Express backend
+│  ├─ server.js                  # routes + static hosting
+│  ├─ pi.js · store.js           # Pi API wrapper · persistent store
+│  └─ leaderboard.js             # re-simulation verifier (anti-cheat)
+├─ scripts/                     # build-wasm.sh · build-web.mjs · build-preview.mjs
+├─ tests/payment-state.test.mjs # backend payment + leaderboard tests
+└─ package.json
 ```
 
-## What works without any setup
-Open `index.html` (or run the server) in a **normal desktop/mobile browser** and the game is
-fully playable. The Login and Unlock buttons detect that `window.Pi` is absent and show a
-"open in the Pi Browser" message instead of erroring. This is intentional — it lets you test
-the gameplay anywhere.
+## Prerequisites
 
-## 1. Register the app and get your API key
-1. Open the **Pi Browser** on your phone.
-2. Go to `pi://develop.pinet.com` (the Pi Developer Portal).
-3. Register a new app (or select an existing one). Set the app's URL to your deployed URL
-   (see step 3 below), and enable **Sandbox** for development.
-4. Copy the app's **API key**.
+| Tool | Why | Notes |
+|------|-----|-------|
+| **Node ≥ 22.6** | build + server | Uses Node's built-in TypeScript transform (no bundler dependency). |
+| **Emscripten** (`emcc`) | compile C++ → WASM | Install via [emsdk](https://emscripten.org/docs/getting_started/downloads.html). |
+| **CMake + a C++17 compiler** | run the native test suite | e.g. `gcc-c++`/`clang`. Not needed to run the game. |
 
-## 2. Run locally
+## Build & run
+
 ```bash
-npm install
-cp .env.example .env        # then edit .env and paste your key
-# .env should contain:  PI_API_KEY=your_key_here
-npm start                   # serves http://localhost:3000
+npm install                 # installs express (the only runtime dep)
+
+# 1) compile the C++ core to WebAssembly (web + node targets)
+npm run build:wasm          # requires emcc on PATH
+
+# 2) build the web app into public/  (transpiles TS -> native ES modules)
+npm run build:web
+
+# …or do both:
+npm run build
+
+# 3) start the server (serves public/ + the API)
+npm start                   # http://localhost:3000
 ```
-> Auth and payments only function inside the Pi Browser. Locally you can verify the server
-> boots, serves the page, and that the game plays. To exercise Pi login/payment you need to
-> open the **deployed** URL inside the Pi Browser sandbox.
 
-## 3. Deploy (pick one free option)
-The app is a single Node/Express server that also serves the static frontend, so any Node host works.
+> **Local play:** open `http://localhost:3000` in any desktop/mobile browser and
+> the game is fully playable. Pi **login/payments** only function inside the Pi
+> Browser — elsewhere those buttons show a friendly "open in the Pi Browser"
+> message instead of erroring.
 
-- **Render / Railway:** new Web Service from this repo, build `npm install`, start `npm start`,
-  add env var `PI_API_KEY`.
-- **Replit:** import the repo, add `PI_API_KEY` to Secrets, run.
-- **Vercel:** works too, but Vercel prefers serverless functions — the simplest path is a Node
-  host (Render/Railway/Replit). If you use Vercel, move `/api/*` handlers into `/api` serverless
-  functions and serve `/public` as static. (Manus can do this conversion for deployment.)
+### Tests
 
-After deploying, put the live URL back into the Developer Portal app settings (step 1.3).
+```bash
+npm test          # runs both suites
+npm run test:core # 44 native C++ assertions (RNG, saves, collisions, scoring, determinism)
+npm run test:js   # backend payment-state machine + leaderboard anti-cheat
+```
 
-## 4. Test inside the Pi Browser
-1. Open your deployed URL in the **Pi Browser** (sandbox).
-2. Tap **Login with Pi** → approve the consent dialog → you should see `@yourusername`.
-3. Play: tap/swipe left–right to switch lanes, collect **π** tokens, dodge red blocks.
-4. Tap **Unlock Gold Orb + Shield · 1 π** → the Pi Wallet modal appears → approve.
-   The server approves and completes the payment, and the unlock is granted.
+### Standalone playable preview (optional)
 
-## 5. Going to Mainnet payments
-Sandbox uses test π. To accept **real** π, request Mainnet payment access in the Developer
-Portal. Pi grants this to apps that show real utility, safe behavior, and stable operation.
-Once approved, set `sandbox: false` in `app.js` (`Pi.init`).
+```bash
+# builds a single self-contained preview.html (wasm embedded) you can open or share
+em++ core/src/sim.cpp core/bindings/wasm.cpp -I core/include -std=c++17 -O3 --bind \
+  -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=createPirunCore -sENVIRONMENT=web \
+  -sALLOW_MEMORY_GROWTH=1 -sFILESYSTEM=0 -sSINGLE_FILE=1 -o /tmp/pirun_core_single.js
+node scripts/build-preview.mjs /tmp/pirun_core_single.js preview.html
+```
 
-## How the Pi pieces fit (reference)
-- **SDK load:** `<script src="https://sdk.minepi.com/pi-sdk.js"></script>` then
-  `Pi.init({ version: "2.0", sandbox: true })`.
-- **Auth:** `Pi.authenticate(['username','payments'], onIncompletePaymentFound)` →
-  `{ accessToken, user: { uid, username } }`. Verified server-side via `GET /v2/me`
-  with `Authorization: Bearer <accessToken>`.
-- **Payment (User-to-App):** `Pi.createPayment({amount, memo, metadata}, callbacks)`.
-  The backend calls `POST /v2/payments/{id}/approve` then `/complete`, both with
-  `Authorization: Key <PI_API_KEY>`.
+## Deploy without Emscripten (prebuilt artifacts)
 
-## Notes
-- The unlock store is in-memory and resets on server restart — fine for an MVP/sandbox.
-  Swap `store` in `server.js` for a real datastore before relying on it in production.
-- No external assets (no images), one Google Fonts link, and the Pi SDK are the only network
-  dependencies — keeps it fast and review-friendly inside the Pi Browser.
+The repo commits a **self-contained build** so it runs on any Node host with no
+C++/Emscripten toolchain:
+
+- `public/` — the full web build. The C++ core here is compiled with
+  `SINGLE_FILE=1`, so the wasm is embedded as base64 inside the JS (no separate
+  binary). Everything is plain text.
+- `server/pirun_core_node.js` — the single-file node core the leaderboard uses
+  to re-simulate runs.
+
+So on a fresh host you can simply:
+
+```bash
+npm install     # express only
+npm start       # http://localhost:3000 — no build step, no emcc
+```
+
+> Host settings: **Build command = _(none)_**, **Start command = `npm start`**,
+> env `PI_API_KEY`. (Render/Railway/Replit/Fly all work.)
+
+Contributors with Emscripten can regenerate these committed artifacts with:
+
+```bash
+npm run build:dist    # requires emcc; rewrites public/ + server/pirun_core_node.js
+```
+
+CI (`.github/workflows/ci.yml`) installs Emscripten + CMake on every push/PR and
+runs `npm run build`, `npm run build:dist`, and both test suites.
+
+## How to play
+
+| Action | Keyboard | Touch |
+|--------|----------|-------|
+| Switch lane | ← / → or A / D | swipe or tap a screen half |
+| Jump (clear low hurdles) | ↑ / W / Space | swipe up |
+| Slide (under overhead bars) | ↓ / S | swipe down |
+| Pause | Esc / P | pause button |
+
+Collect **π** to build combo → multiplier (up to **x6**). Power-ups: 🛡 shield ·
+🧲 magnet · » boost (2× points) · ◷ slow-mo. Missions refresh daily; the **Daily
+Run** uses a shared seed so everyone plays the same layout.
+
+## Pi integration & feature flags — `web/src/config.ts`
+
+```ts
+PI_AUTH_ENABLED:     true   // Pi login inside the Pi Browser (safe everywhere)
+PI_PAYMENTS_ENABLED: false  // optional cosmetic payment — OFF until sandbox-verified
+PI_SANDBOX:          true   // use Pi testnet during development
+LEADERBOARD_ENABLED: true   // submit runs (server re-simulates to validate)
+PI_ADS_ENABLED:      false  // rewarded ads ("watch ad to revive") — needs Pi Ad Network approval
+REWARDS_ENABLED:     false  // real-π play-to-earn payouts — needs Pi approval + funded app wallet
+```
+
+## Play-to-earn (Pi Ad Network + A2U rewards)
+
+Two earn mechanisms, both **off by default** and both **cheat-resistant**:
+
+- **Rewarded ads** — "Watch ad to REVIVE" on game-over. The client calls
+  `Pi.Ads.showAd("rewarded")`; the server verifies the `adId` via
+  `GET /ads_network/status/:adId` and grants the perk only when Pi acks it.
+- **Real-π rewards (A2U)** — "Claim π" converts a run into a Pi payout. The
+  backend **re-simulates the run** (a faked score earns nothing), enforces a
+  **per-user daily cap** and **idempotency**, then pays from the app wallet via
+  Pi's `pi-backend` SDK. Economics are env-tunable (`REWARD_PI_PER_TOKEN`,
+  `REWARD_DAILY_CAP_PI`, `REWARD_MIN_CLAIM_PI`). Without a configured wallet,
+  claims are safely recorded as *pending* — nothing is minted.
+
+Server endpoints: `POST /api/ads/verify`, `POST /api/rewards/claim`,
+`GET /api/rewards/status`. Anti-abuse is tested in `tests/rewards.test.mjs`.
+
+**Full step-by-step launch (registration, approvals, wallet, mainnet) →
+[`PI_LAUNCH.md`](./PI_LAUNCH.md).** Privacy Policy and Terms (required for Pi's
+app review) are in [`PRIVACY.md`](./PRIVACY.md) and [`TERMS.md`](./TERMS.md).
+
+- **Payments are cosmetic only and never pay-to-win** — the single optional 1 π
+  unlock grants the *Gold Orb* skin + one shield per run. The game is 100% free.
+- **Payments stay behind `PI_PAYMENTS_ENABLED` until** the full auth → server
+  approve → complete → cancel/error flow is verified in the Pi sandbox.
+- **No ads.** **No client-trusted money or scores.** The `PI_API_KEY` lives only
+  on the server; the client never sees it.
+
+### Publishing to the Pi ecosystem (you do these — they need your Pi account)
+
+1. In the **Pi Browser**, open `pi://develop.pinet.com`, register the app, set
+   its URL to your deployed URL, and enable **Sandbox**.
+2. Copy the app's **API key** → set it as the `PI_API_KEY` env var on your host
+   (see `.env.example`). Replace `web/validation-key.txt` with the portal's
+   domain-validation key; it is served at the site root by the build.
+3. Deploy (any Node host: Render, Railway, Replit, Fly, a VM…). Build command
+   `npm run build`, start `npm start`, env `PI_API_KEY`.
+4. Open the deployed URL in the Pi Browser sandbox, test **Login with Pi**, then
+   flip `PI_PAYMENTS_ENABLED` to test the cosmetic unlock.
+5. For real π, request **Mainnet payment access** in the portal, then set
+   `PI_SANDBOX: false`.
+
+See **PRODUCTION_READINESS.md** for the full status report, test evidence, and
+remaining risks.
