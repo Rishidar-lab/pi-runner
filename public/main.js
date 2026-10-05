@@ -1,13 +1,14 @@
-import { loadCore, Cmd, St, Pickup } from './core/coreLoader.js';
+import { loadCore, Cmd, St } from './core/coreLoader.js';
 import { Renderer } from './render/renderer.js';
 import { Input } from './input/input.js';
 import { Audio } from './audio/audio.js';
 import { UI } from './ui/ui.js';
 import { Store } from './persistence/store.js';
 import { PiAdapter } from './pi/piAdapter.js';
-import { skinByIndex, SKINS } from './game/skins.js';
+import { SKINS } from './game/skins.js';
 import { evaluate as evalAchievements } from './game/achievements.js';
 import { ensureDailyMissions, applyRunToMissions, dailySeed } from './game/missions.js';
+import { NodeChallengeClient } from './game/nodeChallenge.js';
 import { FLAGS } from './config.js';
 const FIXED_DT = 1 / 120;
 class Game {
@@ -19,6 +20,7 @@ class Game {
     ui;
     store;
     pi = new PiAdapter();
+    nc = new NodeChallengeClient();
     acc = 0;
     last = 0;
     stepIdx = 0;
@@ -34,6 +36,7 @@ class Game {
     replaying = false;
     replayStep = 0;
     replayIdx = 0;
+    challengeTicket = null;
     revivedThisRun = false;
     recordedCoins = 0;
     recordedDistance = 0;
@@ -149,6 +152,123 @@ class Game {
         this.ui.hideAll();
         if (this.store.meta.settings.music) this.audio.startMusic();
     }
+    async startNodeChallenge() {
+        let ticket;
+        try {
+            ticket = await this.nc.start();
+        } catch  {
+            this.ui.toast('Could not reach your Pi Runner Node. Try again.');
+            return;
+        }
+        this.challengeTicket = ticket;
+        this.audio.resume();
+        this.curSeed = ticket.seed >>> 0;
+        this.curUnlockShield = false;
+        this.curSkin = this.store.selectedSkin;
+        this.core.reset(this.curSeed, false, this.curSkin);
+        this.core.start();
+        this.renderer.setSkin(this.curSkin);
+        this.acc = 0;
+        this.stepIdx = 0;
+        this.pendingInputs = [];
+        this.tapeSteps = [];
+        this.tapeCmds = [];
+        this.revivedThisRun = false;
+        this.recordedCoins = 0;
+        this.recordedDistance = 0;
+        this.runCounted = false;
+        this.prev = {
+            coins: 0,
+            shield: false,
+            magnet: 0,
+            boost: 0,
+            slowmo: 0,
+            gems: 0,
+            state: St.Playing
+        };
+        this.toggleControls(true);
+        this.ui.hideAll();
+        this.ui.setChallengeBadge(true);
+        if (this.store.meta.settings.music) this.audio.startMusic();
+    }
+    async openNodeChallenge() {
+        this.ui.showLoading('Contacting your Pi Runner Node…');
+        try {
+            const [challenge, board, status] = await Promise.all([
+                this.nc.current(),
+                this.nc.leaderboard().catch(()=>null),
+                this.nc.nodeStatus().catch(()=>null)
+            ]);
+            const me = this.identityName();
+            const myRow = board?.entries.find((e)=>e.username === me) ?? null;
+            this.ui.showNodeChallenge({
+                challenge,
+                nodeLabel: status?.node.label ?? 'your Node',
+                best: status?.today.bestVerifiedScore ?? 0,
+                myBest: myRow?.score ?? 0,
+                top: board?.entries.slice(0, 3) ?? [],
+                isPiUser: Boolean(this.pi.user),
+                localName: this.store.meta.player.localName
+            });
+        } catch  {
+            this.ui.toast('Node Challenge is unavailable right now.');
+            this.ui.showMenu(this.store.best, this.store.totalCoins);
+        }
+    }
+    identityName() {
+        if (this.pi.user) return this.pi.user.username;
+        const n = (this.store.meta.player.localName || 'Player').replace(/[^\w.\- ]/g, '').trim().slice(0, 24) || 'Player';
+        return `${n} (local)`;
+    }
+    async submitChallengeRun(result) {
+        const ticket = this.challengeTicket;
+        this.challengeTicket = null;
+        this.ui.setChallengeBadge(false);
+        if (!ticket || !this.lastRun) {
+            this.ui.showMenu(this.store.best, this.store.totalCoins);
+            return;
+        }
+        this.ui.showVerifying();
+        let res;
+        try {
+            res = await this.nc.submit({
+                ticket,
+                steps: this.lastRun.steps,
+                tapeSteps: this.lastRun.tapeSteps,
+                tapeCmds: this.lastRun.tapeCmds,
+                score: result.score,
+                distance: result.distance,
+                coins: result.coins,
+                accessToken: this.pi.token,
+                localName: this.pi.user ? null : this.store.meta.player.localName || 'Player'
+            });
+        } catch  {
+            res = {
+                ok: false,
+                verified: false,
+                reason: 'NETWORK'
+            };
+        }
+        this.ui.showChallengeResult(res, ticket.challengeId, this.identityName());
+    }
+    async openNodeDashboard() {
+        this.ui.showLoading('Reading node status…');
+        try {
+            this.ui.showNodeDashboard(await this.nc.nodeStatus());
+        } catch  {
+            this.ui.toast('Could not read node status.');
+            this.ui.showMenu(this.store.best, this.store.totalCoins);
+        }
+    }
+    async openChallengeLeaderboard() {
+        this.ui.showLoading('Loading verified runs…');
+        try {
+            const board = await this.nc.leaderboard();
+            this.ui.showChallengeLeaderboard(board, this.identityName());
+        } catch  {
+            this.ui.toast('Could not load the leaderboard.');
+        }
+    }
     doPause() {
         this.core.pause();
         this.settingsBack = 'pause';
@@ -212,6 +332,11 @@ class Game {
         if (this.curSeed === dailySeed() && result.score > this.store.meta.daily.best) this.store.meta.daily.best = result.score;
         this.store.flushMeta();
         this.checkSkinUnlocks();
+        if (this.challengeTicket) {
+            for (const a of newly)this.ui.toast(`Achievement: ${a.name} ★`);
+            void this.submitChallengeRun(result);
+            return;
+        }
         if (FLAGS.LEADERBOARD_ENABLED) void this.submitScore(result);
         this.ui.showGameOver({
             score: result.score,
@@ -396,6 +521,8 @@ class Game {
             onResume: ()=>this.doResume(),
             onRestart: ()=>this.startRun(false),
             onQuitToMenu: ()=>{
+                this.challengeTicket = null;
+                this.ui.setChallengeBadge(false);
                 this.core.reset(0, false, this.store.selectedSkin);
                 this.toggleControls(false);
                 this.audio.stopMusic();
@@ -424,6 +551,14 @@ class Game {
             onClaimReward: ()=>void this.claimReward(),
             onLogin: ()=>void this.login(),
             onBuyUnlock: ()=>void this.buyUnlock(),
+            onNodeChallenge: ()=>void this.openNodeChallenge(),
+            onNodeChallengePlay: ()=>void this.startNodeChallenge(),
+            onOpenNodeDashboard: ()=>void this.openNodeDashboard(),
+            onOpenChallengeLeaderboard: ()=>void this.openChallengeLeaderboard(),
+            onSetLocalName: (name)=>{
+                this.store.meta.player.localName = name;
+                this.store.flushMeta();
+            },
             onToggleSound: (on)=>{
                 this.audio.setSound(on);
                 this.store.meta.settings.sound = on;
