@@ -1,5 +1,13 @@
 # Pi Runner 🏃‍♂️π
 
+## Status
+
+**MAINTAIN — browser game, deployed.**
+
+- IMPLEMENTED / TESTED: C++→WASM runner with JS shell, 62 tests; CI green on `master`.
+- LIVE-VERIFIED: <https://rishidar-lab.github.io/pi-runner/> (HTTP 200, 2026-10-22).
+- NOT CLAIMED: real Pi payments (requires Pi Core Team approval + funded wallet; optional, owner-gated).
+
 A polished 2D **Pi-themed endless runner** for the Pi ecosystem. Dash through a
 neon Pi grid, switch lanes, **jump** hurdles, **slide** under bars, bank **π**,
 chain combos, grab power-ups, complete missions, and climb a **cheat-resistant
